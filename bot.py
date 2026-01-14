@@ -113,6 +113,7 @@ nclhug @user
 nclpat @user
 nclship @user1 @user2
 nclmembers
+nclbeg
 """,
         inline=False
     )
@@ -139,16 +140,17 @@ nclmembers
     )
 
     embed.add_field(
-        name="👑 Founder / Co-Owner",
-        value="All commands",
+        name="📊 Invite Commands",
+        value="""
+nclinviteboard → Top inviters
+nclinvites @user → Number of people invited by a user
+""",
         inline=False
     )
 
     embed.add_field(
-        name="📊 Server Stats / Invites",
-        value="""
-nclinviteboard → Show top inviters
-""",
+        name="👑 Founder / Co-Owner",
+        value="All commands",
         inline=False
     )
 
@@ -179,12 +181,32 @@ async def ship(ctx, user1: discord.Member, user2: discord.Member):
 async def members(ctx):
     await ctx.send(f"👥 Total members: **{ctx.guild.member_count}**")
 
+@bot.command()
+async def beg(ctx):
+    responses = [
+        "😅 You begged for coins… got 1 coin, better luck next time!",
+        "😂 Bro, no coins for you… try again!",
+        "💰 You found 50 imaginary coins in the couch cushions!",
+        "🤣 The server laughed at your begging… you got nothing!"
+    ]
+    await ctx.send(random.choice(responses))
+
+@bot.command()
+async def joke(ctx):
+    jokes = [
+        "Why did Discord break up? Too many servers 😭",
+        "Mods don’t sleep, they just timeout 😈",
+        "ncl > all prefixes 😎",
+        "Why did the bot go to school? To improve its 'code' skills! 🤓",
+        "Why did the server go to therapy? Too many issues! 😅",
+        "Why did the moderator cross the road? To delete the message on the other side!"
+    ]
+    await ctx.send(random.choice(jokes))
+
 # ---------- WARN SYSTEM ----------
 @bot.command()
 async def warn(ctx, member: discord.Member, *, reason="No reason"):
-    if not has_any_role(ctx, [
-        ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER
-    ]):
+    if not has_any_role(ctx, [ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER]):
         return await ctx.send("❌ You cannot warn members.")
 
     warnings.setdefault(member.id, []).append(reason)
@@ -195,30 +217,21 @@ async def warnings(ctx, member: discord.Member):
     user_warnings = warnings.get(member.id, [])
     if not user_warnings:
         return await ctx.send(f"✅ {member.mention} has no warnings.")
-
     text = "\n".join(f"{i+1}. {w}" for i, w in enumerate(user_warnings))
     await ctx.send(f"⚠️ **Warnings for {member}:**\n{text}")
 
 @bot.command()
 async def unwarn(ctx, member: discord.Member):
-    if not has_any_role(ctx, [
-        ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER
-    ]):
+    if not has_any_role(ctx, [ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER]):
         return await ctx.send("❌ No permission.")
-
     warnings.pop(member.id, None)
     await ctx.send(f"✅ All warnings cleared for {member}")
 
 # ---------- MODERATION ----------
 @bot.command()
 async def clear(ctx, amount: int):
-    if not has_any_role(ctx, [
-        ROLE_STAFF, ROLE_SENIOR_STAFF, ROLE_HEAD_STAFF,
-        ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD,
-        ROLE_FOUNDER, ROLE_COOWNER
-    ]):
+    if not has_any_role(ctx, [ROLE_STAFF, ROLE_SENIOR_STAFF, ROLE_HEAD_STAFF, ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER]):
         return await ctx.send("❌ No permission.")
-
     deleted = await ctx.channel.purge(limit=amount + 1)
     await ctx.send(f"🧹 Cleared {len(deleted)-1} messages!", delete_after=5)
 
@@ -246,23 +259,19 @@ async def unban(ctx, user_id: int):
 
 @bot.command()
 async def timeout(ctx, member: discord.Member, minutes: int, *, reason="No reason"):
-    if not has_any_role(ctx, [
-        ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER
-    ]):
+    if not has_any_role(ctx, [ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER]):
         return await ctx.send("❌ No permission.")
     await member.timeout(timedelta(minutes=minutes), reason=reason)
     await ctx.send(f"⏳ {member} timed out for {minutes} minutes | {reason}")
 
 @bot.command()
 async def untimeout(ctx, member: discord.Member):
-    if not has_any_role(ctx, [
-        ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER
-    ]):
+    if not has_any_role(ctx, [ROLE_TRIAL_MOD, ROLE_MOD, ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER]):
         return await ctx.send("❌ No permission.")
     await member.timeout(None)
     await ctx.send(f"✅ Timeout removed for {member}")
 
-# ---------- INVITE LEADERBOARD ----------
+# ---------- INVITES ----------
 @bot.command()
 async def nclinviteboard(ctx):
     guild = ctx.guild
@@ -271,18 +280,24 @@ async def nclinviteboard(ctx):
         invite_data[inv.inviter] = invite_data.get(inv.inviter, 0) + inv.uses
     if not invite_data:
         return await ctx.send("No invites yet!")
-
     sorted_invites = sorted(invite_data.items(), key=lambda x: x[1], reverse=True)
     embed = discord.Embed(
         title="📊 Top Inviters",
         description="Who brought the most members!",
         color=discord.Color.gold()
     )
-
     for i, (user, uses) in enumerate(sorted_invites[:10], start=1):
         embed.add_field(name=f"{i}. {user}", value=f"{uses} invite(s)", inline=False)
-
     await ctx.send(embed=embed)
+
+@bot.command()
+async def nclinvites(ctx, member: discord.Member):
+    guild = ctx.guild
+    total_invites = 0
+    for inv in await guild.invites():
+        if inv.inviter == member:
+            total_invites += inv.uses
+    await ctx.send(f"🎯 {member.mention} has invited **{total_invites}** member(s)!")
 
 # ---------- RUN ----------
 bot.run(TOKEN)

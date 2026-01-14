@@ -11,15 +11,15 @@ TOKEN = os.getenv("TOKEN")
 BOOST_CHANNEL_ID = 1460708408343658672
 INVITE_CHANNEL_ID = 1457800213250179104
 
-# ---------- ROLES ----------
+# ---------- ROLE NAMES ----------
 ROLE_FOUNDER = "★Founder★"
 ROLE_COOWNER = "★ CO-OWNER ★"
 ROLE_HEAD_MOD = "👑 Head Moderator"
 ROLE_MOD = "🛡️ Moderator"
 ROLE_TRIAL_MOD = "🧪 Trial Mod"
 ROLE_STAFF = "🛠️ Staff"
-ROLE_HEAD_STAFF = "👑 Head Staff"
 ROLE_SENIOR_STAFF = "⭐ Senior Staff"
+ROLE_HEAD_STAFF = "👑 Head Staff"
 
 # ---------- INTENTS ----------
 intents = discord.Intents.default()
@@ -29,11 +29,11 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
+# ---------- DATA ----------
 invites = {}
 warnings = {}
-invite_counts = {}
 
-# ---------- UTILITY ----------
+# ---------- UTIL ----------
 def has_any_role(ctx, roles):
     return any(role.name in roles for role in ctx.author.roles)
 
@@ -49,11 +49,25 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.content.lower().strip() == "ncl":
-        await message.channel.send(
-            "💀 **Bro you forgot the rest**\n"
-            "Use `ncl help` before I uninstall myself 😭"
-        )
+    content = message.content.lower().strip()
+
+    # Fun response for 'ncl' only
+    if content == "ncl":
+        fun_responses = [
+            "💀 Bro you forgot the rest! Try `ncl help` 😭",
+            "🤨 You just typed `ncl` and vanished… Commands went missing!",
+            "👀 Psst! I need more than `ncl`… try `ncl help` 😉"
+        ]
+        await message.channel.send(random.choice(fun_responses))
+
+    # Fun response for malformed 'ncl help'
+    elif content.startswith("ncl") and "help" in content and content != "ncl help":
+        funny_fix = [
+            "😂 Close! Just type `ncl help` without extra spaces.",
+            "🙃 Hmm… Did you mean `ncl help`? Try that!",
+            "🤔 Almost! `ncl help` is the magic phrase."
+        ]
+        await message.channel.send(random.choice(funny_fix))
 
     await bot.process_commands(message)
 
@@ -70,10 +84,6 @@ async def on_member_join(member):
                 await channel.send(
                     f"🎉 {member.mention} joined using **{invite.inviter}** invite!"
                 )
-            # Update leaderboard
-            invite_counts.setdefault(invite.inviter.id, 0)
-            invite_counts[invite.inviter.id] += 1
-
     invites[member.guild.id] = after
 
 @bot.event
@@ -90,7 +100,7 @@ async def on_member_update(before, after):
 async def help(ctx):
     embed = discord.Embed(
         title="📘 NCL BOT COMMANDS",
-        description=f"Prefix: **{PREFIX}**",
+        description="Prefix: **ncl**",
         color=discord.Color.blue()
     )
 
@@ -108,30 +118,37 @@ nclmembers
     )
 
     embed.add_field(
-        name="⚠️ Warnings / Moderation",
+        name="🛡️ Staff & Mod Commands",
         value="""
-nclwarn @user <reason>        — Warn a member
-nclwarnings @user             — Show member warnings
-nclunwarn @user               — Remove all warnings
-ncltimeout @user <minutes>    — Timeout a member
-ncluntimeout @user            — Remove timeout
-nclclear <amount>             — Delete messages
-nclkick @user <reason>        — Kick a member
-nclban @user <reason>         — Ban a member
-nclunban <user_id>            — Unban a member
+🛠️ Staff+
+• nclclear <amount>
+
+🧪 Trial Mod+
+• nclwarn @user reason
+• nclwarnings @user
+• nclunwarn @user
+• ncltimeout @user minutes
+• ncluntimeout @user
+
+👑 Head Moderator+
+• nclkick @user
+• nclban @user
+• nclunban user_id
 """,
         inline=False
     )
 
     embed.add_field(
-        name="🏆 Invite Tracking",
-        value="nclinviteboard               — Show top inviters leaderboard",
+        name="👑 Founder / Co-Owner",
+        value="All commands",
         inline=False
     )
 
     embed.add_field(
-        name="👑 Founder / Co-Owner Commands",
-        value="All commands from above plus full server moderation powers.",
+        name="📊 Server Stats / Invites",
+        value="""
+nclinviteboard → Show top inviters
+""",
         inline=False
     )
 
@@ -178,12 +195,15 @@ async def warnings(ctx, member: discord.Member):
     user_warnings = warnings.get(member.id, [])
     if not user_warnings:
         return await ctx.send(f"✅ {member.mention} has no warnings.")
+
     text = "\n".join(f"{i+1}. {w}" for i, w in enumerate(user_warnings))
     await ctx.send(f"⚠️ **Warnings for {member}:**\n{text}")
 
 @bot.command()
 async def unwarn(ctx, member: discord.Member):
-    if not has_any_role(ctx, [ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER]):
+    if not has_any_role(ctx, [
+        ROLE_HEAD_MOD, ROLE_FOUNDER, ROLE_COOWNER
+    ]):
         return await ctx.send("❌ No permission.")
 
     warnings.pop(member.id, None)
@@ -198,8 +218,9 @@ async def clear(ctx, amount: int):
         ROLE_FOUNDER, ROLE_COOWNER
     ]):
         return await ctx.send("❌ No permission.")
-    await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"🧹 Cleared {amount} messages", delete_after=5)
+
+    deleted = await ctx.channel.purge(limit=amount + 1)
+    await ctx.send(f"🧹 Cleared {len(deleted)-1} messages!", delete_after=5)
 
 @bot.command()
 async def kick(ctx, member: discord.Member, *, reason="No reason"):
@@ -230,7 +251,7 @@ async def timeout(ctx, member: discord.Member, minutes: int, *, reason="No reaso
     ]):
         return await ctx.send("❌ No permission.")
     await member.timeout(timedelta(minutes=minutes), reason=reason)
-    await ctx.send(f"⏳ {member} timed out for {minutes} minutes")
+    await ctx.send(f"⏳ {member} timed out for {minutes} minutes | {reason}")
 
 @bot.command()
 async def untimeout(ctx, member: discord.Member):
@@ -243,21 +264,24 @@ async def untimeout(ctx, member: discord.Member):
 
 # ---------- INVITE LEADERBOARD ----------
 @bot.command()
-async def inviteboard(ctx):
-    if not invite_counts:
-        return await ctx.send("📊 No invites yet.")
-    
-    leaderboard = sorted(invite_counts.items(), key=lambda x: x[1], reverse=True)
-    text = ""
-    for i, (user_id, count) in enumerate(leaderboard[:10], 1):
-        user = ctx.guild.get_member(user_id)
-        if user:
-            text += f"{i}. {user.mention} — {count} invites\n"
+async def nclinviteboard(ctx):
+    guild = ctx.guild
+    invite_data = {}
+    for inv in await guild.invites():
+        invite_data[inv.inviter] = invite_data.get(inv.inviter, 0) + inv.uses
+    if not invite_data:
+        return await ctx.send("No invites yet!")
+
+    sorted_invites = sorted(invite_data.items(), key=lambda x: x[1], reverse=True)
     embed = discord.Embed(
-        title="🏆 Top Inviters Leaderboard",
-        description=text,
+        title="📊 Top Inviters",
+        description="Who brought the most members!",
         color=discord.Color.gold()
     )
+
+    for i, (user, uses) in enumerate(sorted_invites[:10], start=1):
+        embed.add_field(name=f"{i}. {user}", value=f"{uses} invite(s)", inline=False)
+
     await ctx.send(embed=embed)
 
 # ---------- RUN ----------

@@ -19,8 +19,8 @@ invite_tracker = {}
 
 # Server & channel IDs
 GUILD_ID = 1457168592763355148           # Your server ID
-INVITE_CHANNEL_ID = 1457800213250179104  # Invite messages
-BOOST_CHANNEL_ID = 1460708408343658672   # Boost alerts
+INVITE_CHANNEL_ID = 1457800213250179104  # Invite messages channel
+BOOST_CHANNEL_ID = 1460708408343658672   # Boost alerts channel
 
 # Fun action messages
 slap_messages = [
@@ -96,19 +96,19 @@ async def on_member_update(before, after):
 
 # Ping
 @bot.command()
-async def ping(ctx):
+async def ncl_ping(ctx):
     await ctx.send("Pong! 🏓")
 
 # Members count
 @bot.command()
-async def members(ctx):
+async def ncl_members(ctx):
     guild = bot.get_guild(GUILD_ID)
     if guild:
         await ctx.send(f"Total members in the server: {guild.member_count}")
 
 # Who invited a member
 @bot.command()
-async def invitedby(ctx, member: discord.Member):
+async def ncl_invitedby(ctx, member: discord.Member):
     guild = bot.get_guild(GUILD_ID)
     invites = await guild.invites()
     inviter = None
@@ -120,66 +120,61 @@ async def invitedby(ctx, member: discord.Member):
         await ctx.send(f"{member.mention} was invited by {inviter.mention}")
     else:
         await ctx.send(f"Could not detect who invited {member.mention}")
-    # Update tracker
     invite_tracker[guild.id] = {invite.code: invite.uses for invite in invites}
 
 # Count how many a member has invited
 @bot.command()
-async def invites(ctx, member: discord.Member = None):
+async def ncl_invites(ctx, member: discord.Member = None):
     guild = bot.get_guild(GUILD_ID)
     if not member:
         member = ctx.author
-
     invites = await guild.invites()
     total = sum(invite.uses for invite in invites if invite.inviter == member)
     await ctx.send(f"{member.mention} has invited **{total}** member(s)!")
 
 # Top inviters leaderboard
 @bot.command()
-async def leaderboard(ctx):
+async def ncl_leaderboard(ctx):
     guild = bot.get_guild(GUILD_ID)
     invites = await guild.invites()
     leaderboard = {}
     for invite in invites:
         leaderboard[invite.inviter] = leaderboard.get(invite.inviter, 0) + invite.uses
-
     top = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)[:5]
-
     embed = discord.Embed(title="Top Inviters", color=discord.Color.gold())
     for i, (user, count) in enumerate(top, 1):
         embed.add_field(name=f"{i}. {user}", value=f"Invites: {count}", inline=False)
-
     await ctx.send(embed=embed)
 
 # Slap command
 @bot.command()
-async def slap(ctx, member: discord.Member):
+async def ncl_slap(ctx, member: discord.Member):
     await ctx.send(random.choice(slap_messages).format(ctx.author.mention, member.mention))
 
 # Kiss command
 @bot.command()
-async def kiss(ctx, member: discord.Member):
+async def ncl_kiss(ctx, member: discord.Member):
     await ctx.send(random.choice(kiss_messages).format(ctx.author.mention, member.mention))
 
 # Custom help
-@bot.command(name="bothelp")
-async def bothelp(ctx):
+@bot.command(name="ncl_help")
+async def ncl_help(ctx):
     if ctx.author.bot:
         return
     embed = discord.Embed(
-        title="Server Bot Commands & Fun Features",
+        title="NCL Server Bot Commands & Fun Features",
         description="All commands available in this server:",
         color=discord.Color.green()
     )
-    embed.add_field(name="!ping", value="Check if the bot is online.", inline=False)
-    embed.add_field(name="!members", value="Shows total members in the server.", inline=False)
-    embed.add_field(name="!invitedby @member", value="Shows who invited a member.", inline=False)
-    embed.add_field(name="!invites @member", value="Shows how many members a person has invited.", inline=False)
-    embed.add_field(name="!leaderboard", value="Shows the top inviters in the server.", inline=False)
+    embed.add_field(name="!ncl_ping", value="Check if the bot is online.", inline=False)
+    embed.add_field(name="!ncl_members", value="Shows total members in the server.", inline=False)
+    embed.add_field(name="!ncl_invitedby @member", value="Shows who invited a member.", inline=False)
+    embed.add_field(name="!ncl_invites @member", value="Shows how many members a person has invited.", inline=False)
+    embed.add_field(name="!ncl_leaderboard", value="Shows the top inviters in the server.", inline=False)
     embed.add_field(name="Invite Tracking", value="Tracks who invited new members automatically.", inline=False)
     embed.add_field(name="Boost Alerts", value="Thanks boosters automatically in a separate channel.", inline=False)
-    embed.add_field(name="Fun Commands", value="!slap @member → Slap someone\n!kiss @member → Kiss someone!", inline=False)
-    embed.set_footer(text="Use !bothelp to see this message anytime!")
+    embed.add_field(name="Fun Commands", value="!ncl_slap @member → Slap someone\n!ncl_kiss @member → Kiss someone!", inline=False)
+    embed.set_footer(text="Use !ncl_help to see this message anytime!")
     await ctx.send(embed=embed)
 
 # -------------------------

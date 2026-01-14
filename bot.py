@@ -85,6 +85,33 @@ async def ping(ctx):
     await ctx.send("Pong! 🏓")
 
 # -------------------------
+# Members count command
+@bot.command()
+async def members(ctx):
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        await ctx.send(f"Total members in the server: {guild.member_count}")
+
+# -------------------------
+# Invited by command
+@bot.command()
+async def invitedby(ctx, member: discord.Member):
+    guild = bot.get_guild(GUILD_ID)
+    if guild:
+        invites = await guild.invites()
+        inviter = None
+        for invite in invites:
+            if invite.uses > invite_tracker[guild.id].get(invite.code, 0):
+                inviter = invite.inviter
+                break
+        if inviter:
+            await ctx.send(f"{member.mention} was invited by {inviter.mention}")
+        else:
+            await ctx.send(f"Could not detect who invited {member.mention}")
+        # Update tracker
+        invite_tracker[guild.id] = {invite.code: invite.uses for invite in invites}
+
+# -------------------------
 # Custom help command
 @bot.command(name="help")
 async def help_command(ctx):
@@ -95,6 +122,8 @@ async def help_command(ctx):
     )
     embed.add_field(name="!ping", value="Check if bot is online.", inline=False)
     embed.add_field(name="!help", value="Shows this help message.", inline=False)
+    embed.add_field(name="!members", value="Shows total members in the server.", inline=False)
+    embed.add_field(name="!invitedby @member", value="Shows who invited a member.", inline=False)
     embed.add_field(name="Invite Tracking", value="Bot tracks who invited new members.", inline=False)
     embed.add_field(name="Boost Alerts", value="Bot thanks boosters automatically in a separate channel.", inline=False)
     embed.set_footer(text="Server Growth & Support Bot")

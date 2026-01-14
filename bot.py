@@ -94,10 +94,10 @@ nclhug @user
 nclpat @user
 nclship @user1 @user2
 nclmembers
-ncljoke
+ncljoke [@user] - joke, optionally on someone
 nclping
-nclinvites @user
-nclinviteboard
+nclinvites @user - check invites of a user
+nclinviteboard - top inviters leaderboard
 """,
         inline=False
     )
@@ -116,7 +116,7 @@ nclunban user_id
 """,
         inline=False
     )
-    embed.add_field(name="👑 Founder / Co-Owner", value="All commands + undo any last action", inline=False)
+    embed.add_field(name="👑 Founder / Co-Owner", value="All commands + undo last action", inline=False)
     await ctx.send(embed=embed)
 
 # ---------- FUN ----------
@@ -140,17 +140,24 @@ async def pat(ctx, member: discord.Member):
 async def ship(ctx, user1: discord.Member, user2: discord.Member):
     await ctx.send(f"❤️ {user1.mention} x {user2.mention} — **SHIPPED!**")
 
+# JOKE COMMAND
+jokes_list = [
+    "Why did Discord break up? Too many servers 😭",
+    "Mods don’t sleep, they just timeout 😈",
+    "ncl > all prefixes 😎",
+    "Why did the chicken join Discord? To get to the other server!",
+    "I would tell you a UDP joke, but you might not get it...",
+    "Why do programmers prefer dark mode? Because light attracts bugs!",
+    "Why did the bot go to school? To improve its 'code'-ucation!",
+    "Why don't skeletons fight on Discord? They don't have the guts!"
+]
+
 @bot.command()
-async def joke(ctx):
-    jokes = [
-        "Why did Discord break up? Too many servers 😭",
-        "Mods don’t sleep, they just timeout 😈",
-        "ncl > all prefixes 😎",
-        "Why did the chicken join Discord? To get to the other server!",
-        "I would tell you a UDP joke, but you might not get it...",
-        "Why do programmers prefer dark mode? Because light attracts bugs!"
-    ]
-    await ctx.send(random.choice(jokes))
+async def joke(ctx, member: discord.Member = None):
+    if member:
+        await ctx.send(f"😂 Hey {member.mention}, {random.choice(jokes_list)}")
+    else:
+        await ctx.send(random.choice(jokes_list))
 
 @bot.command()
 async def ping(ctx):

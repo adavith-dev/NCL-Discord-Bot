@@ -324,9 +324,43 @@ async def ncljoke(ctx, member: discord.Member):
     ]
     joke = random.choice(jokes)
     await ctx.send(f"😂 {ctx.author.mention} tells a joke to {member.mention}:\n{joke}")
+# ================= FUNNY WRONG COMMAND HANDLER =================
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    content = message.content.lower()
+
+    # If they type only the prefix or "help"
+    if content == "ncl" or content == "ncl help":
+        jokes = [
+            "😂 Oops! You almost found the secret command, try `nclhelp` instead!",
+            "🤭 Looking for help? Try `nclhelp` next time!",
+            "😆 Close, but the command is `nclhelp`!"
+        ]
+        await message.channel.send(random.choice(jokes))
+        return
+
+    # If they typed a command starting with 'ncl' but it doesn't exist
+    if content.startswith("ncl"):
+        cmd_name = content[3:].strip()  # remove prefix
+        if cmd_name not in [c.name for c in bot.commands]:
+            jokes = [
+                f"😜 `{message.content}` is not a real command! Try `nclhelp` instead!",
+                f"🙃 Command not found! Did you mean `nclhelp`?",
+                f"🤔 `{message.content}`? Nope! Use `nclhelp` to see all commands."
+            ]
+            await message.channel.send(random.choice(jokes))
+            return
+
+    # Process other commands normally
+    await bot.process_commands(message)
+
 
 
 # ================= RUN =================
 bot.run(os.getenv("TOKEN"))
+
 
 

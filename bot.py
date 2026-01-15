@@ -31,7 +31,13 @@ def can_punish(ctx, target):
 
 # ================= DATABASE (POSTGRESQL) =================
 DATABASE_URL = os.getenv("DATABASE_URL")
-db = psycopg2.connect(DATABASE_URL)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+db = psycopg2.connect(
+    DATABASE_URL,
+    sslmode="require"
+)
+
 cur = db.cursor()
 
 cur.execute("""
@@ -257,3 +263,4 @@ async def ship(ctx, u1: discord.Member, u2: discord.Member):
 
 # ================= RUN =================
 bot.run(os.getenv("TOKEN"))
+

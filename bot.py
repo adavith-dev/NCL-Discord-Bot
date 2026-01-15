@@ -1,296 +1,259 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
-import os
-import json
-import random
-import datetime
+import os, random, datetime
+import psycopg2
 
 intents = discord.Intents.all()
-bot = commands.Bot(
-    command_prefix="ncl",
-    intents=intents,
-    help_command=None
+bot = commands.Bot(command_prefix="ncl", intents=intents, help_command=None)
+
+# ================= ROLE IDS =================
+FOUNDER_ID   = 1457168593123803222
+COOWNER_ID   = 1457168593123803221
+HEAD_MOD_ID  = 1458041286006276267
+MOD_ID       = 1458040204781948938
+TRIAL_MOD_ID = 1458040060472459488
+
+VIP_ROLE_ID  = 1460000000000000000  # 🔴 CHANGE THIS
+
+ROLE_POWER = {
+    FOUNDER_ID: 100,
+    COOWNER_ID: 95,
+    HEAD_MOD_ID: 80,
+    MOD_ID: 60,
+    TRIAL_MOD_ID: 40
+}
+
+def get_power(member):
+    return max((ROLE_POWER.get(r.id, 0) for r in member.roles), default=0)
+
+def can_punish(ctx, target):
+    return get_power(ctx.author) > get_power(target)
+
+# ================= DATABASE (POSTGRESQL) =================
+DATABASE_URL = os.getenv("DATABASE_URL")
+db = psycopg2.connect(DATABASE_URL)
+cur = db.cursor()
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id BIGINT PRIMARY KEY,
+    coins INTEGER DEFAULT 0,
+    invites INTEGER DEFAULT 0
 )
+""")
 
+cur.execute("""
+CREATE TABLE IF NOT EXISTS warnings (
+    user_id BIGINT,
+    reason TEXT
+)
+""")
 
-DATA_FILE = "data.json"
+db.commit()
 
-# ----------------- DATA HANDLING -----------------
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "w") as f:
-            json.dump({}, f)
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+def get_user(uid):
+    cur.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (uid,))
+    db.commit()
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-def get_user(data, user_id):
-    user_id = str(user_id)
-    if user_id not in data:
-        data[user_id] = {
-            "coins": 0,
-            "warnings": [],
-            "last_daily": "",
-            "invites": 0
-        }
-    return data[user_id]
-
-# ----------------- BOT READY -----------------
+# ================= READY =================
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
-# ----------------- INVITE TRACKER -----------------
+# ================= INVITES → CASH =================
 invites_cache = {}
 
 @bot.event
-async def on_guild_join(guild):
-    invites_cache[guild.id] = await guild.invites()
-
-@bot.event
 async def on_ready():
-    for guild in bot.guilds:
-        invites_cache[guild.id] = await guild.invites()
-    print("✅ Invite tracker ready")
+    for g in bot.guilds:
+        invites_cache[g.id] = await g.invites()
 
 @bot.event
 async def on_member_join(member):
-    data = load_data()
     before = invites_cache[member.guild.id]
     after = await member.guild.invites()
 
-    for invite in after:
-        for old in before:
-            if invite.code == old.code and invite.uses > old.uses:
-                user = get_user(data, invite.inviter.id)
-                user["invites"] += 1
-                save_data(data)
+    for i in after:
+        for b in before:
+            if i.code == b.code and i.uses > b.uses:
+                get_user(i.inviter.id)
+                cur.execute(
+                    "UPDATE users SET invites = invites + 1, coins = coins + 25 WHERE user_id=%s",
+                    (i.inviter.id,)
+                )
+                db.commit()
                 break
 
     invites_cache[member.guild.id] = after
 
-# ----------------- FUN COMMANDS -----------------
+# ================= ECONOMY =================
 @bot.command()
-async def beg(ctx):
-    data = load_data()
-    user = get_user(data, ctx.author.id)
-    if random.choice([True, False]):
-        user["coins"] += 5
-        await ctx.send("🍀 Someone felt bad and gave you **5 coins**!")
-    else:
-        await ctx.send("🥲 You begged… and got ignored.")
-    save_data(data)
+async def balance(ctx):
+    get_user(ctx.author.id)
+    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
+    await ctx.send(f"💰 You have **{cur.fetchone()[0]} coins**")
 
-@bot.command()
-async def slap(ctx, member: discord.Member):
-    await ctx.send(f"👋 {ctx.author.mention} slapped {member.mention}!")
-
-@bot.command()
-async def hug(ctx, member: discord.Member):
-    await ctx.send(f"🤗 {ctx.author.mention} hugged {member.mention}!")
-
-@bot.command()
-async def kiss(ctx, member: discord.Member):
-    await ctx.send(f"💋 {ctx.author.mention} kissed {member.mention}!")
-
-@bot.command()
-async def pat(ctx, member: discord.Member):
-    await ctx.send(f"✨ {ctx.author.mention} patted {member.mention}!")
-
-@bot.command()
-async def ship(ctx, user1: discord.Member, user2: discord.Member):
-    percent = random.randint(1, 100)
-    await ctx.send(f"❤️ **{user1.name} x {user2.name}** = `{percent}%` love!")
-
-# ----------------- ECONOMY -----------------
 @bot.command()
 async def daily(ctx):
-    data = load_data()
-    user = get_user(data, ctx.author.id)
-    today = str(datetime.date.today())
+    get_user(ctx.author.id)
+    cur.execute("UPDATE users SET coins = coins + 50 WHERE user_id=%s", (ctx.author.id,))
+    db.commit()
+    await ctx.send("💸 You got **50 daily coins**")
 
-    if user["last_daily"] == today:
-        await ctx.send("⏰ You already claimed your daily today!")
-        return
-
-    user["coins"] += 50
-    user["last_daily"] = today
-    save_data(data)
-    await ctx.send("💸 You claimed **50 daily coins**!")
-
-# ----------------- PROFILE -----------------
 @bot.command()
-async def profile(ctx, member: discord.Member = None):
-    member = member or ctx.author
-    data = load_data()
-    user = get_user(data, member.id)
+async def gamble(ctx, amount: int):
+    get_user(ctx.author.id)
+    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
+    coins = cur.fetchone()[0]
 
-    embed = discord.Embed(title=f"📊 {member.name}'s Profile", color=discord.Color.blue())
-    embed.add_field(name="💰 Coins", value=user["coins"])
-    embed.add_field(name="⚠️ Warnings", value=len(user["warnings"]))
+    if amount <= 0 or coins < amount:
+        return await ctx.send("❌ Invalid amount")
+
+    if random.choice([True, False]):
+        cur.execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (amount, ctx.author.id))
+        msg = f"🎰 You WON **{amount} coins**"
+    else:
+        cur.execute("UPDATE users SET coins = coins - %s WHERE user_id=%s", (amount, ctx.author.id))
+        msg = f"💀 You LOST **{amount} coins**"
+
+    db.commit()
+    await ctx.send(msg)
+
+# ================= SHOP =================
+SHOP = {
+    "vip": 500,
+    "rename": 200,
+    "rolecolor": 300
+}
+
+@bot.command()
+async def shop(ctx):
+    embed = discord.Embed(
+        title="🛒 NCL SHOP",
+        description="Spend your hard-earned coins wisely 💸",
+        color=discord.Color.purple()
+    )
+
     embed.add_field(
-        name="📩 Invites",
-        value=(
-            "💀 Zero invites… touch grass 😭"
-            if user["invites"] == 0
-            else f"🔥 {user['invites']} people joined because of you!"
-        ),
+        name="🎖️ VIP — 500 coins",
+        value="• VIP role\n• Flex status\n• Future perks",
         inline=False
     )
-    embed.set_thumbnail(url=member.avatar.url)
+    embed.add_field(
+        name="✏️ Rename — 200 coins",
+        value="Change your nickname once",
+        inline=False
+    )
+    embed.add_field(
+        name="🎨 Role Color — 300 coins",
+        value="Custom role color (admin approved)",
+        inline=False
+    )
+
+    embed.set_footer(text="Use: nclbuy <item>")
     await ctx.send(embed=embed)
 
-# ----------------- INVITES -----------------
 @bot.command()
-async def invites(ctx, member: discord.Member = None):
-    member = member or ctx.author
-    data = load_data()
-    user = get_user(data, member.id)
+async def buy(ctx, item: str):
+    if item not in SHOP:
+        return await ctx.send("❌ Item not found")
 
-    if user["invites"] == 0:
-        await ctx.send("📩 You have **0 invites**… invite your pet bro 😭")
+    get_user(ctx.author.id)
+    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
+    coins = cur.fetchone()[0]
+
+    if coins < SHOP[item]:
+        return await ctx.send("❌ Not enough coins")
+
+    if item == "vip":
+        vip_role = ctx.guild.get_role(VIP_ROLE_ID)
+        if vip_role in ctx.author.roles:
+            return await ctx.send("⚠️ You already have VIP")
+        await ctx.author.add_roles(vip_role, reason="Bought VIP from shop")
+
+    cur.execute(
+        "UPDATE users SET coins = coins - %s WHERE user_id=%s",
+        (SHOP[item], ctx.author.id)
+    )
+    db.commit()
+
+    await ctx.send(f"✅ You bought **{item.upper()}**")
+
+# ================= WARN SYSTEM + AUTO BAN =================
+@bot.command()
+async def warn(ctx, member: discord.Member, *, reason="No reason"):
+    if not can_punish(ctx, member):
+        return await ctx.send("🚫 Cannot warn higher role")
+
+    get_user(member.id)
+    cur.execute("INSERT INTO warnings VALUES (%s,%s)", (member.id, reason))
+    db.commit()
+
+    cur.execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,))
+    count = cur.fetchone()[0]
+
+    if count >= 5:
+        await member.ban(reason="Auto-ban: 5 warnings")
+        await ctx.send("🔨 **AUTO-BANNED (5 WARNINGS)**")
     else:
-        await ctx.send(f"📩 {member.name} has **{user['invites']} invites** 🔥")
-
-@bot.command()
-async def inviteboard(ctx):
-    data = load_data()
-    sorted_users = sorted(data.items(), key=lambda x: x[1]["invites"], reverse=True)
-
-    embed = discord.Embed(title="🏆 Invite Leaderboard", color=discord.Color.gold())
-    rank = 1
-    for user_id, info in sorted_users[:10]:
-        user = await bot.fetch_user(int(user_id))
-        embed.add_field(
-            name=f"#{rank} {user.name}",
-            value=f"📩 {info['invites']} invites",
-            inline=False
-        )
-        rank += 1
-
-    await ctx.send(embed=embed)
-
-# ----------------- MODERATION -----------------
-@bot.command()
-@commands.has_permissions(manage_messages=True)
-async def clear(ctx, amount: int):
-    await ctx.channel.purge(limit=amount + 1)
-
-@bot.command()
-@commands.has_permissions(kick_members=True)
-async def kick(ctx, member: discord.Member):
-    await member.kick()
-    await ctx.send("👢 User kicked.")
-
-@bot.command()
-@commands.has_permissions(ban_members=True)
-async def ban(ctx, member: discord.Member, *, reason=None):
-    await member.ban(reason=reason)
-    await ctx.send("🔨 User banned.")
-
-@bot.command()
-@commands.has_permissions(ban_members=True)
-async def unban(ctx, user_id: int):
-    user = await bot.fetch_user(user_id)
-    await ctx.guild.unban(user)
-    await ctx.send("🎉 User unbanned.")
-
-@bot.command()
-@commands.has_permissions(moderate_members=True)
-async def mute(ctx, member: discord.Member, minutes: int):
-    await member.timeout(datetime.timedelta(minutes=minutes))
-    await ctx.send("🔇 User muted.")
-
-@bot.command()
-@commands.has_permissions(moderate_members=True)
-async def unmute(ctx, member: discord.Member):
-    await member.timeout(None)
-    await ctx.send("🔊 User unmuted.")
-
-@bot.command()
-@commands.has_permissions(manage_messages=True)
-async def warn(ctx, member: discord.Member, *, reason):
-    data = load_data()
-    user = get_user(data, member.id)
-    user["warnings"].append(reason)
-    save_data(data)
-    await ctx.send("⚠️ Warning added.")
+        await ctx.send(f"⚠️ Warning added ({count}/5)")
 
 @bot.command()
 async def warnings(ctx, member: discord.Member):
-    data = load_data()
-    user = get_user(data, member.id)
-    await ctx.send(f"📝 Warnings: {len(user['warnings'])}")
+    cur.execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,))
+    await ctx.send(f"📝 Warnings: **{cur.fetchone()[0]}**")
 
 @bot.command()
-@commands.has_permissions(manage_messages=True)
 async def unwarn(ctx, member: discord.Member):
-    data = load_data()
-    user = get_user(data, member.id)
-    user["warnings"] = []
-    save_data(data)
-    await ctx.send("✅ All warnings cleared.")
+    if get_power(ctx.author) < 80:
+        return await ctx.send("❌ Head Mod+ only")
+    cur.execute("DELETE FROM warnings WHERE user_id=%s", (member.id,))
+    db.commit()
+    await ctx.send("✅ Warnings cleared")
 
-# ----------------- HELP (YOUR EXACT VERSION) -----------------
+# ================= MODERATION =================
 @bot.command()
-async def help(ctx):
-    embed = discord.Embed(
-        title="🚀 NCL BOT — Command Guide",
-        description=(
-            "**Prefix:** `ncl`\n\n"
-            "NCL Bot is packed with fun, economy, profile, and moderation features.\n"
-            "Here’s everything you can use 👇"
-        ),
-        color=discord.Color.blue()
-    )
+async def kick(ctx, member: discord.Member):
+    if not can_punish(ctx, member):
+        return await ctx.send("🚫 Cannot kick higher role")
+    await member.kick()
+    await ctx.send("👢 User kicked")
 
-    embed.add_field(
-        name="🎉 Fun & Social Commands",
-        value=(
-            "`nclslap @user` 👋 — Slap someone for fun\n"
-            "`nclkiss @user` 💋 — Send a kiss\n"
-            "`nclhug @user` 🤗 — Hug a member\n"
-            "`nclpat @user` ✨ — Pat someone\n"
-            "`nclship @user1 @user2` ❤️ — Ship two users\n"
-            "`nclbeg` 🍀 — Beg for coins (5 coins or nothing)"
-        ),
-        inline=False
-    )
+@bot.command()
+async def ban(ctx, member: discord.Member):
+    if not can_punish(ctx, member):
+        return await ctx.send("🚫 Cannot ban higher role")
+    await member.ban()
+    await ctx.send("🔨 User banned")
 
-    embed.add_field(
-        name="📊 Profile & Economy",
-        value=(
-            "`nclprofile [@user]` 📊 — View profile stats\n"
-            "`ncldaily` 💸 — Claim daily coins (once every 24h)\n"
-            "`nclinvites [@user]` 📩 — Check invite count\n"
-            "`nclinviteboard` 🏆 — Server invite leaderboard"
-        ),
-        inline=False
-    )
+@bot.command()
+async def unban(ctx, user_id: int):
+    if get_power(ctx.author) < 80:
+        return await ctx.send("❌ Head Mod+ only")
+    user = await bot.fetch_user(user_id)
+    await ctx.guild.unban(user)
+    await ctx.send("🎉 User unbanned")
 
-    embed.add_field(
-        name="🛡️ Moderation Commands",
-        value=(
-            "`nclclear <amount>` 🧹 — Delete messages\n"
-            "`nclwarn @user <reason>` ⚠️ — Warn a member\n"
-            "`nclwarnings @user` 📝 — View warnings\n"
-            "`nclunwarn @user` ✅ — Clear all warnings\n"
-            "`nclmute @user <minutes>` 🔇 — Timeout a member\n"
-            "`nclunmute @user` 🔊 — Remove timeout\n"
-            "`nclkick @user` 👢 — Kick a member\n"
-            "`nclban @user <reason>` 🔨 — Ban a member\n"
-            "`nclunban <user_id>` 🎉 — Unban using user ID"
-        ),
-        inline=False
-    )
+# ================= FUN =================
+@bot.command()
+async def slap(ctx, m: discord.Member):
+    await ctx.send(f"👋 {ctx.author.mention} slapped {m.mention}")
 
-    embed.set_footer(text="💡 Tip: Use commands wisely… or hilariously 😏")
-    await ctx.send(embed=embed)
+@bot.command()
+async def hug(ctx, m: discord.Member):
+    await ctx.send(f"🤗 {ctx.author.mention} hugged {m.mention}")
 
-# ----------------- RUN -----------------
+@bot.command()
+async def kiss(ctx, m: discord.Member):
+    await ctx.send(f"💋 {ctx.author.mention} kissed {m.mention}")
+
+@bot.command()
+async def pat(ctx, m: discord.Member):
+    await ctx.send(f"✨ {ctx.author.mention} patted {m.mention}")
+
+@bot.command()
+async def ship(ctx, u1: discord.Member, u2: discord.Member):
+    await ctx.send(f"❤️ {u1.name} x {u2.name} = {random.randint(1,100)}%")
+
+# ================= RUN =================
 bot.run(os.getenv("TOKEN"))
-

@@ -1,91 +1,59 @@
 import discord
 from discord.ext import commands
-from datetime import datetime, timedelta
+from datetime import timedelta
 import os
 import random
-import asyncio
 
 # ================= CONFIG =================
 PREFIX = "ncl"
-TOKEN = os.getenv("TOKEN")
-
-# ================= ROLE IDS =================
-FOUNDER_ID = 1457168593123803222
-COOWNER_ID = 1457168593123803221
-HEAD_MOD_ID = 1458041286006276267
-MOD_ID = 1458040204781948938
-TRIAL_MOD_ID = 1458040060472459488
-
-# ================= POWER LEVELS =================
-ROLE_POWER = {
-    FOUNDER_ID: 100,
-    COOWNER_ID: 95,
-    HEAD_MOD_ID: 80,
-    MOD_ID: 60,
-    TRIAL_MOD_ID: 40
-}
-
-def get_power(member: discord.Member):
-    power = 0
-    for role in member.roles:
-        power = max(power, ROLE_POWER.get(role.id, 0))
-    return power
 
 # ================= INTENTS =================
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # ================= STORAGE =================
-user_warnings = {}  # Warnings storage
-afk_users = {}      # AFK storage
-daily_claim = {}    # Daily rewards
-coins = {}          # Coins storage
-guild_invites = {}  # Guild invites
-user_invites = {}   # User invite counts
+user_warnings = {}
+user_points = {}
+invite_cache = {}
+
+# ================= UTIL =================
+def get_points(uid):
+    return user_points.get(uid, 0)
+
+def add_points(uid, amt):
+    user_points[uid] = get_points(uid) + amt
 
 # ================= EVENTS =================
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
-    # Fetch invites for all guilds
-    for guild in bot.guilds:
-        invs = await guild.invites()
-        guild_invites[guild.id] = {i.code: i.uses for i in invs}
+    for g in bot.guilds:
+        invites = await g.invites()
+        invite_cache[g.id] = {i.code: i.uses for i in invites}
 
 @bot.event
 async def on_member_join(member):
     invites = await member.guild.invites()
+    old = invite_cache.get(member.guild.id, {})
     for i in invites:
-        previous_uses = guild_invites[member.guild.id].get(i.code, 0)
-        if i.uses > previous_uses:
-            inviter_id = i.inviter.id
-            user_invites[inviter_id] = user_invites.get(inviter_id, 0) + 1
-            guild_invites[member.guild.id][i.code] = i.uses
+        if i.code in old and i.uses > old[i.code]:
+            add_points(i.inviter.id, 10)
             break
+    invite_cache[member.guild.id] = {i.code: i.uses for i in invites}
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # AFK removal
-    if message.author.id in afk_users:
-        afk_users.pop(message.author.id)
-        await message.channel.send(f"👋 Welcome back {message.author.mention}")
-
-    # AFK mention
-    for m in message.mentions:
-        if m.id in afk_users:
-            await message.channel.send(f"😴 {m.display_name} is AFK — {afk_users[m.id]}")
-
-    # Funny corrections
-    if message.content.lower().strip() in ["ncl", "ncl help", "nclinvite"]:
-        await message.channel.send(random.choice([
-            "🤡 Almost… try `nclhelp`",
-            "😭 That ain’t it chief → `nclhelp`",
-            "Skill issue detected. Use `nclhelp`"
-        ]))
-
+    if message.content.lower().strip() == "ncl":
+        await message.channel.send(
+            random.choice([
+                "🤨 You typed `ncl` and vanished?",
+                "😭 Bro finish the command… try `nclhelp`",
+                "💀 That’s not how commands work, chief"
+            ])
+        )
     await bot.process_commands(message)
 
 # ================= HELP =================
@@ -98,73 +66,45 @@ async def help(ctx):
     )
 
     embed.add_field(
-        name="🎉 Fun & Social Commands",
-        value="""\
-`nclslap @user` — Slap someone 👋  
-`nclkiss @user` — Send a smooch 💋  
-`nclhug @user` — Hug your friends 🤗  
-`nclpat @user` — Pat someone ✨  
-`nclship @user1 @user2` — Ship two people ❤️  
-`nclmembers` — Check total members 👥  
-`ncljoke [@user]` — Get a random joke or roast 😎  
-`nclbeg` — Beg for fun 🍀  
-`nclroast @user` — Roast someone 🔥  
-`nclrate @user` — Rate a user ⭐  
-`ncl8ball <question>` — Ask the magic 8-ball 🎱  
-`nclafk <reason>` — Set AFK status 😴
-""",
+        name="🎉 Fun & Social",
+        value=(
+            "`nclslap @user`\n"
+            "`nclkiss @user`\n"
+            "`nclhug @user`\n"
+            "`nclpat @user`\n"
+            "`nclship @u1 @u2`\n"
+            "`ncljoke [@user]`\n"
+            "`nclbeg`\n"
+            "`nclroast @user`"
+        ),
         inline=False
     )
 
     embed.add_field(
-        name="📩 Invites & Profile",
-        value="""\
-`nclprofile [@user]` — View profile 📊  
-`nclinvites [@user]` — Check invites 📩  
-`nclinviteboard` — Invite leaderboard 🏆  
-`ncldaily` — Daily reward 💸
-""",
+        name="📩 Profile & Invites",
+        value=(
+            "`nclprofile [@user]`\n"
+            "`nclinvites [@user]`\n"
+            "`nclinviteboard`"
+        ),
         inline=False
     )
 
     embed.add_field(
-        name="🎁 Events",
-        value="""\
-`nclgiveaway <minutes>` — Start giveaway 🎁  
-`nclconfess <message>` — Anonymous confession 😶‍🌫️
-""",
+        name="🛡️ Moderation",
+        value=(
+            "`nclclear <amount>`\n"
+            "`nclwarn @user <reason>`\n"
+            "`nclwarnings @user`\n"
+            "`nclunwarn @user`\n"
+            "`nclkick @user`\n"
+            "`nclban @user`\n"
+            "`ncltimeout @user <minutes>`"
+        ),
         inline=False
     )
 
-    embed.add_field(
-        name="🛡️ Staff & Moderator Commands",
-        value="""\
-`nclclear <amount>` — Clear messages 🧹  
-`nclpurge @user <amount>` — Purge user messages 🗑️  
-`nclwarn @user <reason>` — Warn a user ⚠️  
-`nclwarnings @user` — View warnings 📝  
-`nclunwarn @user` — Clear warnings ✅  
-`ncltimeout @user <minutes>` — Timeout ⏳  
-`ncluntimeout @user` — Remove timeout ⏱️  
-`nclmute @user` — Mute user 🔇  
-`nclunmute @user` — Unmute user 🔊  
-`nclslowmode <seconds>` — Set slowmode 🐢  
-`ncllock` — Lock channel 🔒  
-`nclunlock` — Unlock channel 🔓  
-`nclkick @user` — Kick member 👢  
-`nclban @user <reason>` — Ban member 🔨  
-`nclunban <user_id>` — Unban member 🎉
-""",
-        inline=False
-    )
-
-    embed.add_field(
-        name="👑 Founder / Co-Owner",
-        value="Has access to all commands, basically the boss 💎",
-        inline=False
-    )
-
-    embed.set_footer(text="💡 Tip: Use commands wisely… or hilariously 😏")
+    embed.set_footer(text="Use wisely… or hilariously 😏")
     await ctx.send(embed=embed)
 
 # ================= FUN =================
@@ -185,89 +125,106 @@ async def pat(ctx, member: discord.Member):
     await ctx.send(f"✨ {ctx.author.mention} patted {member.mention}")
 
 @bot.command()
-async def ship(ctx, user1: discord.Member, user2: discord.Member):
-    await ctx.send(f"❤️ {user1.mention} x {user2.mention} — **SHIPPED**")
-
-@bot.command()
-async def members(ctx):
-    await ctx.send(f"👥 Total members: **{ctx.guild.member_count}**")
+async def ship(ctx, u1: discord.Member, u2: discord.Member):
+    await ctx.send(f"❤️ {u1.mention} × {u2.mention} — SHIPPED")
 
 @bot.command()
 async def beg(ctx):
-    reward = random.choice([0, 5])
-    coins[ctx.author.id] = coins.get(ctx.author.id, 0) + reward
-    if reward == 0:
-        await ctx.send("💀 You begged but got nothing.")
+    if random.randint(1, 3) == 1:
+        add_points(ctx.author.id, 5)
+        await ctx.send("🍀 You begged and got **5 points**!")
     else:
-        await ctx.send(f"💸 Luck strikes! You got {reward} coins!")
+        await ctx.send("💀 You begged… and got nothing")
 
 @bot.command()
 async def joke(ctx, member: discord.Member = None):
     jokes = [
-        "This server runs better than my life 💀",
-        "Mods don’t sleep, they just timeout 😭",
-        "Why do programmers hate nature? Too many bugs 🐛",
-        "Discord mods when someone types @everyone 😡",
+        "This server runs on chaos 💀",
+        "Mods don’t sleep, they timeout 😭",
         "Skill issue detected 🤡"
     ]
     if member:
-        jokes += [
-            f"{member.mention} lagged so hard even Discord felt it 💀",
-            f"{member.mention} has more confidence than skill 😭",
-            f"{member.mention} tried… that’s what matters 🤡"
-        ]
+        jokes.append(f"{member.mention} lagged IRL 💀")
     await ctx.send(random.choice(jokes))
 
-# ================= AFK =================
 @bot.command()
-async def afk(ctx, *, reason="AFK"):
-    afk_users[ctx.author.id] = reason
-    await ctx.send(f"😴 {ctx.author.mention} is now AFK — {reason}")
+async def roast(ctx, member: discord.Member):
+    await ctx.send(f"🔥 {member.mention}, even your Wi-Fi left you")
 
 # ================= PROFILE =================
 @bot.command()
-async def profile(ctx, member: discord.Member=None):
+async def profile(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    embed = discord.Embed(
+        title=f"📊 Profile — {member}",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="💰 Points", value=get_points(member.id))
+    embed.add_field(name="📩 Invites", value=get_points(member.id) // 10)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def invites(ctx, member: discord.Member = None):
     member = member or ctx.author
     await ctx.send(
-        f"👤 **{member.display_name}**\n"
-        f"💰 Coins: {coins.get(member.id,0)}\n"
-        f"📩 Invites: {user_invites.get(member.id,0)}\n"
-        f"⚠️ Warnings: {len(user_warnings.get(member.id,[]))}"
+        f"📩 {member.mention} has **{get_points(member.id)//10} invites**"
     )
 
 @bot.command()
-async def daily(ctx):
-    now = datetime.utcnow()
-    last = daily_claim.get(ctx.author.id)
-    if last and (now - last).seconds < 86400:
-        await ctx.send("⏳ You have already claimed your daily reward today.")
-    else:
-        reward = random.randint(10,50)
-        coins[ctx.author.id] = coins.get(ctx.author.id,0) + reward
-        daily_claim[ctx.author.id] = now
-        await ctx.send(f"💸 Daily reward claimed! You got {reward} coins.")
-
-# ================= INVITES =================
-@bot.command()
-async def invites(ctx, member: discord.Member=None):
-    member = member or ctx.author
-    count = user_invites.get(member.id, 0)
-    if count == 0:
-        await ctx.send(f"💀 {member.display_name} has invited 0 people. Sad!")
-    else:
-        await ctx.send(f"📩 {member.display_name} has invited {count} people!")
-
-@bot.command()
 async def inviteboard(ctx):
-    if not user_invites:
-        return await ctx.send("😶 No invites yet.")
-    top = sorted(user_invites.items(), key=lambda x:x[1], reverse=True)[:5]
+    if not user_points:
+        return await ctx.send("😴 No invites yet")
+    top = sorted(user_points.items(), key=lambda x: x[1], reverse=True)[:5]
     text = ""
-    for i, (uid, count) in enumerate(top,1):
+    for i, (uid, pts) in enumerate(top, 1):
         user = await bot.fetch_user(uid)
-        text += f"{i}. {user} — {count} invites\n"
-    await ctx.send(f"🏆 **Invite Leaderboard**\n{text}")
+        text += f"{i}. **{user}** — {pts//10} invites\n"
+    await ctx.send("🏆 **Invite Leaderboard**\n" + text)
+
+# ================= MODERATION =================
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int):
+    await ctx.channel.purge(limit=amount + 1)
+    await ctx.send(f"🧹 Cleared {amount} messages", delete_after=5)
+
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def warn(ctx, member: discord.Member, *, reason="No reason"):
+    user_warnings.setdefault(member.id, []).append(reason)
+    await ctx.send(f"⚠️ {member.mention} warned: {reason}")
+
+@bot.command()
+async def warnings(ctx, member: discord.Member):
+    ws = user_warnings.get(member.id, [])
+    if not ws:
+        return await ctx.send("✅ No warnings")
+    await ctx.send("\n".join(ws))
+
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def unwarn(ctx, member: discord.Member):
+    user_warnings.pop(member.id, None)
+    await ctx.send("✅ Warnings cleared")
+
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member):
+    await member.kick()
+    await ctx.send("👢 Member kicked")
+
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member):
+    await member.ban()
+    await ctx.send("🔨 Member banned")
+
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def timeout(ctx, member: discord.Member, minutes: int):
+    await member.timeout(timedelta(minutes=minutes))
+    await ctx.send("⏳ Timed out")
 
 # ================= RUN =================
-bot.run(TOKEN)
-
+bot.run(os.getenv("TOKEN"))

@@ -79,7 +79,6 @@ invites_cache = {}
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
-    # Initialize invites cache
     for g in bot.guilds:
         invites_cache[g.id] = await g.invites()
 
@@ -102,7 +101,7 @@ async def on_member_join(member):
     invites_cache[member.guild.id] = after
 
 # ================= ECONOMY =================
-daily_cooldowns = {}  # {user_id: datetime of last claim}
+daily_cooldowns = {}
 
 @bot.command()
 async def balance(ctx):
@@ -143,20 +142,11 @@ async def gamble(ctx, amount: int):
     await ctx.send(msg)
 
 # ================= SHOP =================
-SHOP = {
-    "vip": 500,
-    "rename": 200,
-    "rolecolor": 300
-}
+SHOP = {"vip": 500, "rename": 200, "rolecolor": 300}
 
 @bot.command()
 async def shop(ctx):
-    embed = discord.Embed(
-        title="🛒 NCL SHOP",
-        description="Spend your hard-earned coins wisely 💸",
-        color=discord.Color.purple()
-    )
-
+    embed = discord.Embed(title="🛒 NCL SHOP", description="Spend your hard-earned coins wisely 💸", color=discord.Color.purple())
     embed.add_field(name="🎖️ VIP — 500 coins", value="• VIP role\n• Flex status\n• Future perks", inline=False)
     embed.add_field(name="✏️ Rename — 200 coins", value="Change your nickname once", inline=False)
     embed.add_field(name="🎨 Role Color — 300 coins", value="Custom role color (admin approved)", inline=False)
@@ -167,33 +157,26 @@ async def shop(ctx):
 async def buy(ctx, item: str):
     if item not in SHOP:
         return await ctx.send("❌ Item not found")
-
     get_user(ctx.author.id)
     coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
-
     if coins < SHOP[item]:
         return await ctx.send("❌ Not enough coins")
-
     if item == "vip":
         vip_role = ctx.guild.get_role(VIP_ROLE_ID)
         if vip_role in ctx.author.roles:
             return await ctx.send("⚠️ You already have VIP")
         await ctx.author.add_roles(vip_role, reason="Bought VIP from shop")
-
     execute("UPDATE users SET coins = coins - %s WHERE user_id=%s", (SHOP[item], ctx.author.id))
     await ctx.send(f"✅ You bought **{item.upper()}**")
 
-# ================= WARN SYSTEM + AUTO BAN =================
+# ================= WARN SYSTEM =================
 @bot.command()
 async def warn(ctx, member: discord.Member, *, reason="No reason"):
     if not can_punish(ctx, member):
         return await ctx.send("🚫 Cannot warn higher role")
-
     get_user(member.id)
     execute("INSERT INTO warnings VALUES (%s,%s)", (member.id, reason))
-
     count = execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,), fetch=True)[0][0]
-
     if count >= 5:
         await member.ban(reason="Auto-ban: 5 warnings")
         await ctx.send("🔨 **AUTO-BANNED (5 WARNINGS)**")
@@ -245,22 +228,23 @@ MISSIONS = [
     {"task": "Give a hug", "coins": 10},
 ]
 
-user_missions = {}  # {user_id: {"task": task_index, "completed": 0}}
+user_missions = {}
 
 @bot.command()
 async def mission(ctx):
     uid = ctx.author.id
     if uid not in user_missions:
-        task_index = random.randint(0, len(MISSIONS) - 1)
+        task_index = random.randint(0, len(MISSIONS)-1)
         user_missions[uid] = {"task": task_index, "completed": 0}
     task = MISSIONS[user_missions[uid]["task"]]["task"]
     await ctx.send(f"📝 Your mission: **{task}**")
 
 def complete_mission(uid, action_name):
+    """Matches mission keywords with command actions"""
     if uid in user_missions:
-        current_task = user_missions[uid]["task"]
-        mission = MISSIONS[current_task]
-        if action_name.lower() in mission["task"].lower():
+        mission = MISSIONS[user_missions[uid]["task"]]
+        # match by keyword: check if action_name in mission task (lowercase)
+        if any(word in mission["task"].lower() for word in action_name.lower().split()):
             user_missions[uid]["completed"] += 1
             if user_missions[uid]["completed"] >= 1:
                 coins = mission["coins"]
@@ -272,15 +256,22 @@ def complete_mission(uid, action_name):
 
 # Fun commands triggering missions
 @bot.command()
-async def kiss(ctx, m: discord.Member):
-    await ctx.send(f"💋 {ctx.author.mention} kissed {m.mention}")
+async def hug(ctx, member: discord.Member):
+    await ctx.send(f"🤗 {ctx.author.mention} hugged {member.mention}")
+    coins_earned = complete_mission(ctx.author.id, "hug")
+    if coins_earned:
+        await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
+
+@bot.command()
+async def kiss(ctx, member: discord.Member):
+    await ctx.send(f"💋 {ctx.author.mention} kissed {member.mention}")
     coins_earned = complete_mission(ctx.author.id, "kiss")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
 @bot.command()
-async def pat(ctx, m: discord.Member):
-    await ctx.send(f"✨ {ctx.author.mention} patted {m.mention}")
+async def pat(ctx, member: discord.Member):
+    await ctx.send(f"✨ {ctx.author.mention} patted {member.mention}")
     coins_earned = complete_mission(ctx.author.id, "pat")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
@@ -297,59 +288,47 @@ async def ship(ctx, u1: discord.Member, u2: discord.Member):
 async def nclslots(ctx, bet: int):
     get_user(ctx.author.id)
     coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
-    
     if bet <= 0 or bet > coins:
         return await ctx.send("❌ Invalid bet")
-    
-    symbols = ["🍎", "🍌", "🍒", "🍇", "⭐", "💎"]
+    symbols = ["🍎","🍌","🍒","🍇","⭐","💎"]
     result = [random.choice(symbols) for _ in range(3)]
     await ctx.send(" | ".join(result))
-    
     if len(set(result)) == 1:
-        winnings = bet * 5
+        winnings = bet*5
         msg = f"🎉 JACKPOT! You won {winnings} coins!"
     elif len(set(result)) == 2:
-        winnings = bet * 2
+        winnings = bet*2
         msg = f"✨ Nice! You won {winnings} coins!"
     else:
         winnings = -bet
         msg = f"💀 You lost {bet} coins!"
-    
     execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (winnings, ctx.author.id))
     await ctx.send(msg)
 
 @bot.command()
 async def nclroll(ctx, guess: int):
-    if guess < 1 or guess > 6:
-        return await ctx.send("🎲 Guess a number between 1 and 6!")
-    
-    roll = random.randint(1, 6)
-    if guess == roll:
+    if guess<1 or guess>6: return await ctx.send("🎲 Guess 1-6")
+    roll = random.randint(1,6)
+    if guess==roll:
         get_user(ctx.author.id)
         execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
-        await ctx.send(f"🎲 You guessed {guess} and rolled {roll}! You won 10 coins!")
+        await ctx.send(f"🎲 You guessed {guess} and rolled {roll}! +10 coins")
     else:
         await ctx.send(f"🎲 You guessed {guess} but rolled {roll}. Better luck next time!")
 
 @bot.command()
 async def nclrps(ctx, member: discord.Member, choice: str):
-    choices = ["rock", "paper", "scissors"]
+    choices = ["rock","paper","scissors"]
     user_choice = choice.lower()
-    if user_choice not in choices:
-        return await ctx.send("❌ Choose rock, paper, or scissors")
-    
+    if user_choice not in choices: return await ctx.send("❌ Choose rock/paper/scissors")
     bot_choice = random.choice(choices)
-    if user_choice == bot_choice:
-        result = "It's a tie!"
-    elif (user_choice == "rock" and bot_choice == "scissors") or \
-         (user_choice == "paper" and bot_choice == "rock") or \
-         (user_choice == "scissors" and bot_choice == "paper"):
-        result = f"You win! {user_choice} beats {bot_choice}"
+    if user_choice==bot_choice: result="It's a tie!"
+    elif (user_choice=="rock" and bot_choice=="scissors") or (user_choice=="paper" and bot_choice=="rock") or (user_choice=="scissors" and bot_choice=="paper"):
+        result=f"You win! {user_choice} beats {bot_choice}"
         get_user(ctx.author.id)
         execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
     else:
-        result = f"You lose! {bot_choice} beats {user_choice}"
-    
+        result=f"You lose! {bot_choice} beats {user_choice}"
     await ctx.send(f"{ctx.author.mention} chose {user_choice}\n{member.mention} chose {bot_choice}\n{result}")
 
 # ================= PROFILES =================
@@ -363,66 +342,30 @@ async def nclsetbio(ctx, *, bio: str):
     await ctx.send("✅ Bio updated!")
 
 @bot.command()
-async def nclprofile(ctx, member: discord.Member = None):
-    if member is None:
-        member = ctx.author
-    data = execute("SELECT nickname, emoji, bio, color FROM profiles WHERE user_id=%s", (member.id,), fetch=True)
+async def nclprofile(ctx, member: discord.Member=None):
+    if not member: member=ctx.author
+    data = execute("SELECT nickname, emoji, bio, color FROM profiles WHERE user_id=%s",(member.id,),fetch=True)
     embed = discord.Embed(title=f"{member.name}'s Profile", color=discord.Color.blue())
-    
     if data and data[0]:
         nickname, emoji, bio, color = data[0]
-        if nickname: embed.add_field(name="Nickname", value=nickname, inline=False)
-        if emoji: embed.add_field(name="Emoji", value=emoji, inline=False)
-        if bio: embed.add_field(name="Bio", value=bio, inline=False)
+        if nickname: embed.add_field("Nickname",nickname,inline=False)
+        if emoji: embed.add_field("Emoji",emoji,inline=False)
+        if bio: embed.add_field("Bio",bio,inline=False)
         if color:
-            try: embed.color = discord.Color.from_str(color)
+            try: embed.color=discord.Color.from_str(color)
             except: pass
-    
     await ctx.send(embed=embed)
 
 # ================= HELP =================
 @bot.command()
 async def help(ctx):
-    embed = discord.Embed(
-        title="📜 NCL Bot Commands",
-        description="Here's a list of all commands you can use!",
-        color=discord.Color.blurple()
-    )
-
-    embed.add_field(name="💰 Economy",
-        value=("`nclbalance` — Check your coins\n"
-               "`ncldaily` — Claim daily coins\n"
-               "`nclgamble <amount>` — Gamble your coins\n"
-               "`nclshop` — See items in the shop\n"
-               "`nclbuy <item>` — Buy an item"), inline=False)
-
-    embed.add_field(name="🔨 Moderation",
-        value=("`nclkick @user` — Kick a member\n"
-               "`nclban @user` — Ban a member\n"
-               "`nclunban <user_id>` — Unban a member\n"
-               "`nclwarn @user <reason>` — Warn a member\n"
-               "`nclwarnings @user` — Check warnings\n"
-               "`nclunwarn @user` — Clear warnings"), inline=False)
-
-    embed.add_field(name="🎉 Fun",
-        value=("`nclslap @user` — Slap someone\n"
-               "`nclhug @user` — Hug someone\n"
-               "`nclkiss @user` — Kiss someone\n"
-               "`nclpat @user` — Pat someone\n"
-               "`nclship @user @user` — Check compatibility"), inline=False)
-
-    embed.add_field(name="📋 Daily Missions",
-        value="`nclmission` — Get your daily task for extra coins", inline=False)
-
-    embed.add_field(name="🎲 Mini-Games",
-        value=("`nclslots <bet>` — Play slot machine\n"
-               "`nclroll <1-6>` — Roll dice for coins\n"
-               "`nclrps @user <rock/paper/scissors>` — Play rock-paper-scissors"), inline=False)
-
-    embed.add_field(name="📝 Profiles",
-        value=("`nclprofile @user` — See someone's profile\n"
-               "`nclsetbio <text>` — Set your bio"), inline=False)
-
+    embed = discord.Embed(title="📜 NCL Bot Commands", description="Here's a list of all commands you can use!", color=discord.Color.blurple())
+    embed.add_field("💰 Economy","`nclbalance` — Check coins\n`ncldaily` — Claim daily\n`nclgamble <amount>` — Gamble\n`nclshop` — See shop\n`nclbuy <item>` — Buy item",inline=False)
+    embed.add_field("🔨 Moderation","`nclkick @user`\n`nclban @user`\n`nclunban <user_id>`\n`nclwarn @user <reason>`\n`nclwarnings @user`\n`nclunwarn @user`",inline=False)
+    embed.add_field("🎉 Fun","`nclslap @user`\n`nclhug @user`\n`nclkiss @user`\n`nclpat @user`\n`nclship @user @user`",inline=False)
+    embed.add_field("📋 Daily Missions","`nclmission` — Get task for coins",inline=False)
+    embed.add_field("🎲 Mini-Games","`nclslots <bet>`\n`nclroll <1-6>`\n`nclrps @user <rock/paper/scissors>`",inline=False)
+    embed.add_field("📝 Profiles","`nclprofile @user`\n`nclsetbio <text>`",inline=False)
     embed.set_footer(text="Use ncl<command> to run a command")
     await ctx.send(embed=embed)
 

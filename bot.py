@@ -1,8 +1,11 @@
 import discord
 from discord.ext import commands
-import os, random, datetime
+import os, random
+from datetime import datetime, timedelta
 import psycopg2
+from psycopg2 import sql
 
+# ================= BOT SETUP =================
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="ncl", intents=intents, help_command=None)
 
@@ -29,12 +32,20 @@ def get_power(member):
 def can_punish(ctx, target):
     return get_power(ctx.author) > get_power(target)
 
-# ================= DATABASE (POSTGRESQL) =================
+# ================= DATABASE HELPER =================
 DATABASE_URL = os.getenv("DATABASE_URL")
-db = psycopg2.connect(DATABASE_URL)
-cur = db.cursor()
 
-cur.execute("""
+def execute(query, params=(), fetch=False):
+    """Execute a query safely with a new connection each time."""
+    with psycopg2.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            if fetch:
+                return cur.fetchall()
+            conn.commit()
+
+# ================= DATABASE INIT =================
+execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id BIGINT PRIMARY KEY,
     coins INTEGER DEFAULT 0,
@@ -42,14 +53,14 @@ CREATE TABLE IF NOT EXISTS users (
 )
 """)
 
-cur.execute("""
+execute("""
 CREATE TABLE IF NOT EXISTS warnings (
     user_id BIGINT,
     reason TEXT
 )
 """)
 
-cur.execute("""
+execute("""
 CREATE TABLE IF NOT EXISTS profiles (
     user_id BIGINT PRIMARY KEY,
     nickname TEXT,
@@ -59,13 +70,10 @@ CREATE TABLE IF NOT EXISTS profiles (
 )
 """)
 
-db.commit()
-
 def get_user(uid):
-    cur.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (uid,))
-    db.commit()
+    execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (uid,))
 
-# ================= READY =================
+# ================= READY EVENT =================
 invites_cache = {}
 
 @bot.event
@@ -85,46 +93,53 @@ async def on_member_join(member):
         for b in before:
             if i.code == b.code and i.uses > b.uses:
                 get_user(i.inviter.id)
-                cur.execute(
+                execute(
                     "UPDATE users SET invites = invites + 1, coins = coins + 25 WHERE user_id=%s",
                     (i.inviter.id,)
                 )
-                db.commit()
                 break
 
     invites_cache[member.guild.id] = after
 
 # ================= ECONOMY =================
+daily_cooldowns = {}  # {user_id: datetime of last claim}
+
 @bot.command()
 async def balance(ctx):
     get_user(ctx.author.id)
-    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
-    await ctx.send(f"💰 You have **{cur.fetchone()[0]} coins**")
+    coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
+    await ctx.send(f"💰 You have **{coins} coins**")
 
 @bot.command()
 async def daily(ctx):
-    get_user(ctx.author.id)
-    cur.execute("UPDATE users SET coins = coins + 50 WHERE user_id=%s", (ctx.author.id,))
-    db.commit()
+    uid = ctx.author.id
+    now = datetime.utcnow()
+    if uid in daily_cooldowns and now - daily_cooldowns[uid] < timedelta(hours=24):
+        remaining = timedelta(hours=24) - (now - daily_cooldowns[uid])
+        hours, remainder = divmod(int(remaining.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return await ctx.send(f"⏳ Wait {hours}h {minutes}m {seconds}s before claiming again.")
+
+    get_user(uid)
+    execute("UPDATE users SET coins = coins + 50 WHERE user_id=%s", (uid,))
+    daily_cooldowns[uid] = now
     await ctx.send("💸 You got **50 daily coins**")
 
 @bot.command()
 async def gamble(ctx, amount: int):
     get_user(ctx.author.id)
-    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
-    coins = cur.fetchone()[0]
+    coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
 
     if amount <= 0 or coins < amount:
         return await ctx.send("❌ Invalid amount")
 
     if random.choice([True, False]):
-        cur.execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (amount, ctx.author.id))
+        execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (amount, ctx.author.id))
         msg = f"🎰 You WON **{amount} coins**"
     else:
-        cur.execute("UPDATE users SET coins = coins - %s WHERE user_id=%s", (amount, ctx.author.id))
+        execute("UPDATE users SET coins = coins - %s WHERE user_id=%s", (amount, ctx.author.id))
         msg = f"💀 You LOST **{amount} coins**"
 
-    db.commit()
     await ctx.send(msg)
 
 # ================= SHOP =================
@@ -142,22 +157,9 @@ async def shop(ctx):
         color=discord.Color.purple()
     )
 
-    embed.add_field(
-        name="🎖️ VIP — 500 coins",
-        value="• VIP role\n• Flex status\n• Future perks",
-        inline=False
-    )
-    embed.add_field(
-        name="✏️ Rename — 200 coins",
-        value="Change your nickname once",
-        inline=False
-    )
-    embed.add_field(
-        name="🎨 Role Color — 300 coins",
-        value="Custom role color (admin approved)",
-        inline=False
-    )
-
+    embed.add_field(name="🎖️ VIP — 500 coins", value="• VIP role\n• Flex status\n• Future perks", inline=False)
+    embed.add_field(name="✏️ Rename — 200 coins", value="Change your nickname once", inline=False)
+    embed.add_field(name="🎨 Role Color — 300 coins", value="Custom role color (admin approved)", inline=False)
     embed.set_footer(text="Use: nclbuy <item>")
     await ctx.send(embed=embed)
 
@@ -167,8 +169,7 @@ async def buy(ctx, item: str):
         return await ctx.send("❌ Item not found")
 
     get_user(ctx.author.id)
-    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
-    coins = cur.fetchone()[0]
+    coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
 
     if coins < SHOP[item]:
         return await ctx.send("❌ Not enough coins")
@@ -179,12 +180,7 @@ async def buy(ctx, item: str):
             return await ctx.send("⚠️ You already have VIP")
         await ctx.author.add_roles(vip_role, reason="Bought VIP from shop")
 
-    cur.execute(
-        "UPDATE users SET coins = coins - %s WHERE user_id=%s",
-        (SHOP[item], ctx.author.id)
-    )
-    db.commit()
-
+    execute("UPDATE users SET coins = coins - %s WHERE user_id=%s", (SHOP[item], ctx.author.id))
     await ctx.send(f"✅ You bought **{item.upper()}**")
 
 # ================= WARN SYSTEM + AUTO BAN =================
@@ -194,11 +190,9 @@ async def warn(ctx, member: discord.Member, *, reason="No reason"):
         return await ctx.send("🚫 Cannot warn higher role")
 
     get_user(member.id)
-    cur.execute("INSERT INTO warnings VALUES (%s,%s)", (member.id, reason))
-    db.commit()
+    execute("INSERT INTO warnings VALUES (%s,%s)", (member.id, reason))
 
-    cur.execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,))
-    count = cur.fetchone()[0]
+    count = execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,), fetch=True)[0][0]
 
     if count >= 5:
         await member.ban(reason="Auto-ban: 5 warnings")
@@ -208,15 +202,14 @@ async def warn(ctx, member: discord.Member, *, reason="No reason"):
 
 @bot.command()
 async def warnings(ctx, member: discord.Member):
-    cur.execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,))
-    await ctx.send(f"📝 Warnings: **{cur.fetchone()[0]}**")
+    count = execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,), fetch=True)[0][0]
+    await ctx.send(f"📝 Warnings: **{count}**")
 
 @bot.command()
 async def unwarn(ctx, member: discord.Member):
     if get_power(ctx.author) < 80:
         return await ctx.send("❌ Head Mod+ only")
-    cur.execute("DELETE FROM warnings WHERE user_id=%s", (member.id,))
-    db.commit()
+    execute("DELETE FROM warnings WHERE user_id=%s", (member.id,))
     await ctx.send("✅ Warnings cleared")
 
 # ================= MODERATION =================
@@ -238,12 +231,12 @@ async def ban(ctx, member: discord.Member):
 async def unban(ctx, user_id: int):
     if get_power(ctx.author) < 80:
         return await ctx.send("❌ Head Mod+ only")
-    user = await bot.fetch_user(user_id)
-    await ctx.guild.unban(user)
-    await ctx.send("🎉 User unbanned")
-
-
-
+    try:
+        user = await bot.fetch_user(user_id)
+        await ctx.guild.unban(user)
+        await ctx.send("🎉 User unbanned")
+    except:
+        await ctx.send("❌ Invalid user ID or not banned")
 
 # ================= DAILY MISSIONS =================
 MISSIONS = [
@@ -272,13 +265,12 @@ def complete_mission(uid, action_name):
             if user_missions[uid]["completed"] >= 1:
                 coins = mission["coins"]
                 get_user(uid)
-                cur.execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (coins, uid))
-                db.commit()
+                execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (coins, uid))
                 user_missions.pop(uid)
                 return coins
     return 0
 
-# Update fun commands to handle missions
+# Fun commands triggering missions
 @bot.command()
 async def kiss(ctx, m: discord.Member):
     await ctx.send(f"💋 {ctx.author.mention} kissed {m.mention}")
@@ -300,13 +292,11 @@ async def ship(ctx, u1: discord.Member, u2: discord.Member):
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
-
 # ================= MINI-GAMES =================
 @bot.command()
 async def nclslots(ctx, bet: int):
     get_user(ctx.author.id)
-    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
-    coins = cur.fetchone()[0]
+    coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
     
     if bet <= 0 or bet > coins:
         return await ctx.send("❌ Invalid bet")
@@ -325,8 +315,7 @@ async def nclslots(ctx, bet: int):
         winnings = -bet
         msg = f"💀 You lost {bet} coins!"
     
-    cur.execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (winnings, ctx.author.id))
-    db.commit()
+    execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (winnings, ctx.author.id))
     await ctx.send(msg)
 
 @bot.command()
@@ -337,8 +326,7 @@ async def nclroll(ctx, guess: int):
     roll = random.randint(1, 6)
     if guess == roll:
         get_user(ctx.author.id)
-        cur.execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
-        db.commit()
+        execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
         await ctx.send(f"🎲 You guessed {guess} and rolled {roll}! You won 10 coins!")
     else:
         await ctx.send(f"🎲 You guessed {guess} but rolled {roll}. Better luck next time!")
@@ -351,8 +339,6 @@ async def nclrps(ctx, member: discord.Member, choice: str):
         return await ctx.send("❌ Choose rock, paper, or scissors")
     
     bot_choice = random.choice(choices)
-    result = ""
-    
     if user_choice == bot_choice:
         result = "It's a tie!"
     elif (user_choice == "rock" and bot_choice == "scissors") or \
@@ -360,46 +346,41 @@ async def nclrps(ctx, member: discord.Member, choice: str):
          (user_choice == "scissors" and bot_choice == "paper"):
         result = f"You win! {user_choice} beats {bot_choice}"
         get_user(ctx.author.id)
-        cur.execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
-        db.commit()
+        execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
     else:
         result = f"You lose! {bot_choice} beats {user_choice}"
     
     await ctx.send(f"{ctx.author.mention} chose {user_choice}\n{member.mention} chose {bot_choice}\n{result}")
 
-# ================= CUSTOM PROFILES =================
+# ================= PROFILES =================
 @bot.command()
 async def nclsetbio(ctx, *, bio: str):
     get_user(ctx.author.id)
-    cur.execute("""
+    execute("""
     INSERT INTO profiles (user_id, bio) VALUES (%s, %s)
     ON CONFLICT (user_id) DO UPDATE SET bio=%s
     """, (ctx.author.id, bio, bio))
-    db.commit()
     await ctx.send("✅ Bio updated!")
 
 @bot.command()
 async def nclprofile(ctx, member: discord.Member = None):
     if member is None:
         member = ctx.author
-    cur.execute("SELECT nickname, emoji, bio, color FROM profiles WHERE user_id=%s", (member.id,))
-    data = cur.fetchone()
-    
+    data = execute("SELECT nickname, emoji, bio, color FROM profiles WHERE user_id=%s", (member.id,), fetch=True)
     embed = discord.Embed(title=f"{member.name}'s Profile", color=discord.Color.blue())
     
-    if data:
-        nickname, emoji, bio, color = data
+    if data and data[0]:
+        nickname, emoji, bio, color = data[0]
         if nickname: embed.add_field(name="Nickname", value=nickname, inline=False)
         if emoji: embed.add_field(name="Emoji", value=emoji, inline=False)
         if bio: embed.add_field(name="Bio", value=bio, inline=False)
         if color:
-            try:
-                embed.color = discord.Color.from_str(color)
-            except:
-                pass
+            try: embed.color = discord.Color.from_str(color)
+            except: pass
     
     await ctx.send(embed=embed)
-# ================= CUSTOM HELP =================
+
+# ================= HELP =================
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(
@@ -408,79 +389,42 @@ async def help(ctx):
         color=discord.Color.blurple()
     )
 
-    # ECONOMY
-    embed.add_field(
-        name="💰 Economy",
-        value=(
-            "`nclbalance` — Check your coins\n"
-            "`ncldaily` — Claim daily coins\n"
-            "`nclgamble <amount>` — Gamble your coins\n"
-            "`nclshop` — See items in the shop\n"
-            "`nclbuy <item>` — Buy an item"
-        ),
-        inline=False
-    )
+    embed.add_field(name="💰 Economy",
+        value=("`nclbalance` — Check your coins\n"
+               "`ncldaily` — Claim daily coins\n"
+               "`nclgamble <amount>` — Gamble your coins\n"
+               "`nclshop` — See items in the shop\n"
+               "`nclbuy <item>` — Buy an item"), inline=False)
 
-    # MODERATION
-    embed.add_field(
-        name="🔨 Moderation",
-        value=(
-            "`nclkick @user` — Kick a member\n"
-            "`nclban @user` — Ban a member\n"
-            "`nclunban <user_id>` — Unban a member\n"
-            "`nclwarn @user <reason>` — Warn a member\n"
-            "`nclwarnings @user` — Check warnings\n"
-            "`nclunwarn @user` — Clear warnings"
-        ),
-        inline=False
-    )
+    embed.add_field(name="🔨 Moderation",
+        value=("`nclkick @user` — Kick a member\n"
+               "`nclban @user` — Ban a member\n"
+               "`nclunban <user_id>` — Unban a member\n"
+               "`nclwarn @user <reason>` — Warn a member\n"
+               "`nclwarnings @user` — Check warnings\n"
+               "`nclunwarn @user` — Clear warnings"), inline=False)
 
-    # FUN
-    embed.add_field(
-        name="🎉 Fun",
-        value=(
-            "`nclslap @user` — Slap someone\n"
-            "`nclhug @user` — Hug someone\n"
-            "`nclkiss @user` — Kiss someone\n"
-            "`nclpat @user` — Pat someone\n"
-            "`nclship @user @user` — Check compatibility\n"
-            "`ncljoke @user` — Tell a joke to someone"
-        ),
-        inline=False
-    )
+    embed.add_field(name="🎉 Fun",
+        value=("`nclslap @user` — Slap someone\n"
+               "`nclhug @user` — Hug someone\n"
+               "`nclkiss @user` — Kiss someone\n"
+               "`nclpat @user` — Pat someone\n"
+               "`nclship @user @user` — Check compatibility"), inline=False)
 
-    # DAILY MISSIONS
-    embed.add_field(
-        name="📋 Daily Missions",
-        value="`nclmission` — Get your daily task for extra coins",
-        inline=False
-    )
+    embed.add_field(name="📋 Daily Missions",
+        value="`nclmission` — Get your daily task for extra coins", inline=False)
 
-    # MINI-GAMES
-    embed.add_field(
-        name="🎲 Mini-Games",
-        value=(
-            "`nclslots <bet>` — Play slot machine\n"
-            "`nclroll <1-6>` — Roll dice for coins\n"
-            "`nclrps @user <rock/paper/scissors>` — Play rock-paper-scissors"
-        ),
-        inline=False
-    )
+    embed.add_field(name="🎲 Mini-Games",
+        value=("`nclslots <bet>` — Play slot machine\n"
+               "`nclroll <1-6>` — Roll dice for coins\n"
+               "`nclrps @user <rock/paper/scissors>` — Play rock-paper-scissors"), inline=False)
 
-    # PROFILES
-    embed.add_field(
-        name="📝 Profiles",
-        value=(
-            "`nclprofile @user` — See someone's profile\n"
-            "`nclsetbio <text>` — Set your bio"
-        ),
-        inline=False
-    )
+    embed.add_field(name="📝 Profiles",
+        value=("`nclprofile @user` — See someone's profile\n"
+               "`nclsetbio <text>` — Set your bio"), inline=False)
 
     embed.set_footer(text="Use ncl<command> to run a command")
     await ctx.send(embed=embed)
 
-
-# ================= RUN =================
+# ================= RUN BOT =================
 bot.run(os.getenv("TOKEN"))
-

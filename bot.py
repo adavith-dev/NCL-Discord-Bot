@@ -31,13 +31,7 @@ def can_punish(ctx, target):
 
 # ================= DATABASE (POSTGRESQL) =================
 DATABASE_URL = os.getenv("DATABASE_URL")
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-db = psycopg2.connect(
-    DATABASE_URL,
-    sslmode="require"
-)
-
+db = psycopg2.connect(DATABASE_URL)
 cur = db.cursor()
 
 cur.execute("""
@@ -55,6 +49,16 @@ CREATE TABLE IF NOT EXISTS warnings (
 )
 """)
 
+cur.execute("""
+CREATE TABLE IF NOT EXISTS profiles (
+    user_id BIGINT PRIMARY KEY,
+    nickname TEXT,
+    emoji TEXT,
+    bio TEXT,
+    color TEXT
+)
+""")
+
 db.commit()
 
 def get_user(uid):
@@ -62,21 +66,19 @@ def get_user(uid):
     db.commit()
 
 # ================= READY =================
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-
-# ================= INVITES → CASH =================
 invites_cache = {}
 
 @bot.event
 async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    # Initialize invites cache
     for g in bot.guilds:
         invites_cache[g.id] = await g.invites()
 
+# ================= INVITES → CASH =================
 @bot.event
 async def on_member_join(member):
-    before = invites_cache[member.guild.id]
+    before = invites_cache.get(member.guild.id, [])
     after = await member.guild.invites()
 
     for i in after:
@@ -260,6 +262,153 @@ async def pat(ctx, m: discord.Member):
 @bot.command()
 async def ship(ctx, u1: discord.Member, u2: discord.Member):
     await ctx.send(f"❤️ {u1.name} x {u2.name} = {random.randint(1,100)}%")
+
+# ================= DAILY MISSIONS =================
+MISSIONS = [
+    {"task": "Say hi 3 times today", "coins": 20},
+    {"task": "Slap someone", "coins": 15},
+    {"task": "Give a hug", "coins": 10},
+]
+
+user_missions = {}  # {user_id: {"task": task_index, "completed": 0}}
+
+@bot.command()
+async def mission(ctx):
+    uid = ctx.author.id
+    if uid not in user_missions:
+        task_index = random.randint(0, len(MISSIONS) - 1)
+        user_missions[uid] = {"task": task_index, "completed": 0}
+    task = MISSIONS[user_missions[uid]["task"]]["task"]
+    await ctx.send(f"📝 Your mission: **{task}**")
+
+def complete_mission(uid, action_name):
+    if uid in user_missions:
+        current_task = user_missions[uid]["task"]
+        mission = MISSIONS[current_task]
+        if action_name.lower() in mission["task"].lower():
+            user_missions[uid]["completed"] += 1
+            if user_missions[uid]["completed"] >= 1:
+                coins = mission["coins"]
+                get_user(uid)
+                cur.execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (coins, uid))
+                db.commit()
+                user_missions.pop(uid)
+                return coins
+    return 0
+
+# Update fun commands to handle missions
+@bot.command()
+async def slap(ctx, m: discord.Member):
+    await ctx.send(f"👋 {ctx.author.mention} slapped {m.mention}")
+    coins_earned = complete_mission(ctx.author.id, "slap")
+    if coins_earned:
+        await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
+
+@bot.command()
+async def hug(ctx, m: discord.Member):
+    await ctx.send(f"🤗 {ctx.author.mention} hugged {m.mention}")
+    coins_earned = complete_mission(ctx.author.id, "hug")
+    if coins_earned:
+        await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
+
+# ================= MINI-GAMES =================
+@bot.command()
+async def nclslots(ctx, bet: int):
+    get_user(ctx.author.id)
+    cur.execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,))
+    coins = cur.fetchone()[0]
+    
+    if bet <= 0 or bet > coins:
+        return await ctx.send("❌ Invalid bet")
+    
+    symbols = ["🍎", "🍌", "🍒", "🍇", "⭐", "💎"]
+    result = [random.choice(symbols) for _ in range(3)]
+    await ctx.send(" | ".join(result))
+    
+    if len(set(result)) == 1:
+        winnings = bet * 5
+        msg = f"🎉 JACKPOT! You won {winnings} coins!"
+    elif len(set(result)) == 2:
+        winnings = bet * 2
+        msg = f"✨ Nice! You won {winnings} coins!"
+    else:
+        winnings = -bet
+        msg = f"💀 You lost {bet} coins!"
+    
+    cur.execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (winnings, ctx.author.id))
+    db.commit()
+    await ctx.send(msg)
+
+@bot.command()
+async def nclroll(ctx, guess: int):
+    if guess < 1 or guess > 6:
+        return await ctx.send("🎲 Guess a number between 1 and 6!")
+    
+    roll = random.randint(1, 6)
+    if guess == roll:
+        get_user(ctx.author.id)
+        cur.execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
+        db.commit()
+        await ctx.send(f"🎲 You guessed {guess} and rolled {roll}! You won 10 coins!")
+    else:
+        await ctx.send(f"🎲 You guessed {guess} but rolled {roll}. Better luck next time!")
+
+@bot.command()
+async def nclrps(ctx, member: discord.Member, choice: str):
+    choices = ["rock", "paper", "scissors"]
+    user_choice = choice.lower()
+    if user_choice not in choices:
+        return await ctx.send("❌ Choose rock, paper, or scissors")
+    
+    bot_choice = random.choice(choices)
+    result = ""
+    
+    if user_choice == bot_choice:
+        result = "It's a tie!"
+    elif (user_choice == "rock" and bot_choice == "scissors") or \
+         (user_choice == "paper" and bot_choice == "rock") or \
+         (user_choice == "scissors" and bot_choice == "paper"):
+        result = f"You win! {user_choice} beats {bot_choice}"
+        get_user(ctx.author.id)
+        cur.execute("UPDATE users SET coins = coins + 10 WHERE user_id=%s", (ctx.author.id,))
+        db.commit()
+    else:
+        result = f"You lose! {bot_choice} beats {user_choice}"
+    
+    await ctx.send(f"{ctx.author.mention} chose {user_choice}\n{member.mention} chose {bot_choice}\n{result}")
+
+# ================= CUSTOM PROFILES =================
+@bot.command()
+async def nclsetbio(ctx, *, bio: str):
+    get_user(ctx.author.id)
+    cur.execute("""
+    INSERT INTO profiles (user_id, bio) VALUES (%s, %s)
+    ON CONFLICT (user_id) DO UPDATE SET bio=%s
+    """, (ctx.author.id, bio, bio))
+    db.commit()
+    await ctx.send("✅ Bio updated!")
+
+@bot.command()
+async def nclprofile(ctx, member: discord.Member = None):
+    if member is None:
+        member = ctx.author
+    cur.execute("SELECT nickname, emoji, bio, color FROM profiles WHERE user_id=%s", (member.id,))
+    data = cur.fetchone()
+    
+    embed = discord.Embed(title=f"{member.name}'s Profile", color=discord.Color.blue())
+    
+    if data:
+        nickname, emoji, bio, color = data
+        if nickname: embed.add_field(name="Nickname", value=nickname, inline=False)
+        if emoji: embed.add_field(name="Emoji", value=emoji, inline=False)
+        if bio: embed.add_field(name="Bio", value=bio, inline=False)
+        if color:
+            try:
+                embed.color = discord.Color.from_str(color)
+            except:
+                pass
+    
+    await ctx.send(embed=embed)
 # ================= CUSTOM HELP =================
 @bot.command()
 async def help(ctx):
@@ -310,57 +459,37 @@ async def help(ctx):
         inline=False
     )
 
+    # DAILY MISSIONS
+    embed.add_field(
+        name="📋 Daily Missions",
+        value="`nclmission` — Get your daily task for extra coins",
+        inline=False
+    )
+
+    # MINI-GAMES
+    embed.add_field(
+        name="🎲 Mini-Games",
+        value=(
+            "`nclslots <bet>` — Play slot machine\n"
+            "`nclroll <1-6>` — Roll dice for coins\n"
+            "`nclrps @user <rock/paper/scissors>` — Play rock-paper-scissors"
+        ),
+        inline=False
+    )
+
+    # PROFILES
+    embed.add_field(
+        name="📝 Profiles",
+        value=(
+            "`nclprofile @user` — See someone's profile\n"
+            "`nclsetbio <text>` — Set your bio"
+        ),
+        inline=False
+    )
+
     embed.set_footer(text="Use ncl<command> to run a command")
     await ctx.send(embed=embed)
-
-# ================= JOKE COMMAND =================
-@bot.command()
-async def ncljoke(ctx, member: discord.Member):
-    jokes = [
-        "Why did the chicken join Discord? To get to the other server!",
-        "Why don't programmers like nature? Too many bugs!",
-        "Why did the bot go to school? To improve its cache!",
-        "Why do Java developers wear glasses? Because they can't C#."
-    ]
-    joke = random.choice(jokes)
-    await ctx.send(f"😂 {ctx.author.mention} tells a joke to {member.mention}:\n{joke}")
-# ================= FUNNY WRONG COMMAND HANDLER =================
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    content = message.content.lower()
-
-    # If they type only the prefix or "help"
-    if content == "ncl" or content == "ncl help":
-        jokes = [
-            "😂 Oops! You almost found the secret command, try `nclhelp` instead!",
-            "🤭 Looking for help? Try `nclhelp` next time!",
-            "😆 Close, but the command is `nclhelp`!"
-        ]
-        await message.channel.send(random.choice(jokes))
-        return
-
-    # If they typed a command starting with 'ncl' but it doesn't exist
-    if content.startswith("ncl"):
-        cmd_name = content[3:].strip()  # remove prefix
-        if cmd_name not in [c.name for c in bot.commands]:
-            jokes = [
-                f"😜 `{message.content}` is not a real command! Try `nclhelp` instead!",
-                f"🙃 Command not found! Did you mean `nclhelp`?",
-                f"🤔 `{message.content}`? Nope! Use `nclhelp` to see all commands."
-            ]
-            await message.channel.send(random.choice(jokes))
-            return
-
-    # Process other commands normally
-    await bot.process_commands(message)
-
 
 
 # ================= RUN =================
 bot.run(os.getenv("TOKEN"))
-
-
-

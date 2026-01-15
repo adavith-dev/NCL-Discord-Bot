@@ -348,9 +348,9 @@ async def nclprofile(ctx, member: discord.Member=None):
     embed = discord.Embed(title=f"{member.name}'s Profile", color=discord.Color.blue())
     if data and data[0]:
         nickname, emoji, bio, color = data[0]
-        if nickname: embed.add_field("Nickname",nickname,inline=False)
-        if emoji: embed.add_field("Emoji",emoji,inline=False)
-        if bio: embed.add_field("Bio",bio,inline=False)
+        if nickname: embed.add_field(name="Nickname", value=nickname, inline=False)
+        if emoji: embed.add_field(name="Emoji", value=emoji, inline=False)
+        if bio: embed.add_field(name="Bio", value=bio, inline=False)
         if color:
             try: embed.color=discord.Color.from_str(color)
             except: pass
@@ -359,13 +359,41 @@ async def nclprofile(ctx, member: discord.Member=None):
 # ================= HELP =================
 @bot.command()
 async def help(ctx):
-    embed = discord.Embed(title="📜 NCL Bot Commands", description="Here's a list of all commands you can use!", color=discord.Color.blurple())
-    embed.add_field("💰 Economy","`nclbalance` — Check coins\n`ncldaily` — Claim daily\n`nclgamble <amount>` — Gamble\n`nclshop` — See shop\n`nclbuy <item>` — Buy item",inline=False)
-    embed.add_field("🔨 Moderation","`nclkick @user`\n`nclban @user`\n`nclunban <user_id>`\n`nclwarn @user <reason>`\n`nclwarnings @user`\n`nclunwarn @user`",inline=False)
-    embed.add_field("🎉 Fun","`nclslap @user`\n`nclhug @user`\n`nclkiss @user`\n`nclpat @user`\n`nclship @user @user`",inline=False)
-    embed.add_field("📋 Daily Missions","`nclmission` — Get task for coins",inline=False)
-    embed.add_field("🎲 Mini-Games","`nclslots <bet>`\n`nclroll <1-6>`\n`nclrps @user <rock/paper/scissors>`",inline=False)
-    embed.add_field("📝 Profiles","`nclprofile @user`\n`nclsetbio <text>`",inline=False)
+    embed = discord.Embed(
+        title="📜 NCL Bot Commands",
+        description="Here's a list of all commands you can use!",
+        color=discord.Color.blurple()
+    )
+    embed.add_field(
+        name="💰 Economy",
+        value="`nclbalance` — Check coins\n`ncldaily` — Claim daily\n`nclgamble <amount>` — Gamble\n`nclshop` — See shop\n`nclbuy <item>` — Buy item",
+        inline=False
+    )
+    embed.add_field(
+        name="🔨 Moderation",
+        value="`nclkick @user`\n`nclban @user`\n`nclunban <user_id>`\n`nclwarn @user <reason>`\n`nclwarnings @user`\n`nclunwarn @user`",
+        inline=False
+    )
+    embed.add_field(
+        name="🎉 Fun",
+        value="`nclslap @user`\n`nclhug @user`\n`nclkiss @user`\n`nclpat @user`\n`nclship @user @user`",
+        inline=False
+    )
+    embed.add_field(
+        name="📋 Daily Missions",
+        value="`nclmission` — Get task for coins",
+        inline=False
+    )
+    embed.add_field(
+        name="🎲 Mini-Games",
+        value="`nclslots <bet>`\n`nclroll <1-6>`\n`nclrps @user <rock/paper/scissors>`",
+        inline=False
+    )
+    embed.add_field(
+        name="📝 Profiles",
+        value="`nclprofile @user`\n`nclsetbio <text>`",
+        inline=False
+    )
     embed.set_footer(text="Use ncl<command> to run a command")
     await ctx.send(embed=embed)
 

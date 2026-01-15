@@ -260,7 +260,73 @@ async def pat(ctx, m: discord.Member):
 @bot.command()
 async def ship(ctx, u1: discord.Member, u2: discord.Member):
     await ctx.send(f"❤️ {u1.name} x {u2.name} = {random.randint(1,100)}%")
+# ================= CUSTOM HELP =================
+@bot.command()
+async def help(ctx):
+    embed = discord.Embed(
+        title="📜 NCL Bot Commands",
+        description="Here's a list of all commands you can use!",
+        color=discord.Color.blurple()
+    )
+
+    # ECONOMY
+    embed.add_field(
+        name="💰 Economy",
+        value=(
+            "`nclbalance` — Check your coins\n"
+            "`ncldaily` — Claim daily coins\n"
+            "`nclgamble <amount>` — Gamble your coins\n"
+            "`nclshop` — See items in the shop\n"
+            "`nclbuy <item>` — Buy an item"
+        ),
+        inline=False
+    )
+
+    # MODERATION
+    embed.add_field(
+        name="🔨 Moderation",
+        value=(
+            "`nclkick @user` — Kick a member\n"
+            "`nclban @user` — Ban a member\n"
+            "`nclunban <user_id>` — Unban a member\n"
+            "`nclwarn @user <reason>` — Warn a member\n"
+            "`nclwarnings @user` — Check warnings\n"
+            "`nclunwarn @user` — Clear warnings"
+        ),
+        inline=False
+    )
+
+    # FUN
+    embed.add_field(
+        name="🎉 Fun",
+        value=(
+            "`nclslap @user` — Slap someone\n"
+            "`nclhug @user` — Hug someone\n"
+            "`nclkiss @user` — Kiss someone\n"
+            "`nclpat @user` — Pat someone\n"
+            "`nclship @user @user` — Check compatibility\n"
+            "`ncljoke @user` — Tell a joke to someone"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="Use ncl<command> to run a command")
+    await ctx.send(embed=embed)
+
+# ================= JOKE COMMAND =================
+@bot.command()
+async def ncljoke(ctx, member: discord.Member):
+    jokes = [
+        "Why did the chicken join Discord? To get to the other server!",
+        "Why don't programmers like nature? Too many bugs!",
+        "Why did the bot go to school? To improve its cache!",
+        "Why do Java developers wear glasses? Because they can't C#."
+    ]
+    joke = random.choice(jokes)
+    await ctx.send(f"😂 {ctx.author.mention} tells a joke to {member.mention}:\n{joke}")
+
 
 # ================= RUN =================
 bot.run(os.getenv("TOKEN"))
+
 

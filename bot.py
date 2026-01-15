@@ -242,26 +242,8 @@ async def unban(ctx, user_id: int):
     await ctx.guild.unban(user)
     await ctx.send("🎉 User unbanned")
 
-# ================= FUN =================
-@bot.command()
-async def slap(ctx, m: discord.Member):
-    await ctx.send(f"👋 {ctx.author.mention} slapped {m.mention}")
 
-@bot.command()
-async def hug(ctx, m: discord.Member):
-    await ctx.send(f"🤗 {ctx.author.mention} hugged {m.mention}")
 
-@bot.command()
-async def kiss(ctx, m: discord.Member):
-    await ctx.send(f"💋 {ctx.author.mention} kissed {m.mention}")
-
-@bot.command()
-async def pat(ctx, m: discord.Member):
-    await ctx.send(f"✨ {ctx.author.mention} patted {m.mention}")
-
-@bot.command()
-async def ship(ctx, u1: discord.Member, u2: discord.Member):
-    await ctx.send(f"❤️ {u1.name} x {u2.name} = {random.randint(1,100)}%")
 
 # ================= DAILY MISSIONS =================
 MISSIONS = [
@@ -298,18 +280,26 @@ def complete_mission(uid, action_name):
 
 # Update fun commands to handle missions
 @bot.command()
-async def slap(ctx, m: discord.Member):
-    await ctx.send(f"👋 {ctx.author.mention} slapped {m.mention}")
-    coins_earned = complete_mission(ctx.author.id, "slap")
+async def kiss(ctx, m: discord.Member):
+    await ctx.send(f"💋 {ctx.author.mention} kissed {m.mention}")
+    coins_earned = complete_mission(ctx.author.id, "kiss")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
 @bot.command()
-async def hug(ctx, m: discord.Member):
-    await ctx.send(f"🤗 {ctx.author.mention} hugged {m.mention}")
-    coins_earned = complete_mission(ctx.author.id, "hug")
+async def pat(ctx, m: discord.Member):
+    await ctx.send(f"✨ {ctx.author.mention} patted {m.mention}")
+    coins_earned = complete_mission(ctx.author.id, "pat")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
+
+@bot.command()
+async def ship(ctx, u1: discord.Member, u2: discord.Member):
+    await ctx.send(f"❤️ {u1.name} x {u2.name} = {random.randint(1,100)}%")
+    coins_earned = complete_mission(ctx.author.id, "ship")
+    if coins_earned:
+        await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
+
 
 # ================= MINI-GAMES =================
 @bot.command()
@@ -493,3 +483,4 @@ async def help(ctx):
 
 # ================= RUN =================
 bot.run(os.getenv("TOKEN"))
+

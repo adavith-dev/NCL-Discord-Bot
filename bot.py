@@ -7,7 +7,12 @@ import random
 import datetime
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="ncl", intents=intents)
+bot = commands.Bot(
+    command_prefix="ncl",
+    intents=intents,
+    help_command=None
+)
+
 
 DATA_FILE = "data.json"
 
@@ -288,3 +293,4 @@ async def help(ctx):
 
 # ----------------- RUN -----------------
 bot.run(os.getenv("TOKEN"))
+

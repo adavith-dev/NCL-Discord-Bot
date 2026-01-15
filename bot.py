@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from datetime import timedelta
+from datetime import datetime, timedelta
 import os
 import random
 
@@ -36,6 +36,11 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # ================= STORAGE =================
 user_warnings = {}
+user_afk = {}
+user_coins = {}
+user_xp = {}
+user_levels = {}
+user_marriages = {}
 
 # ================= EVENTS =================
 @bot.event
@@ -47,67 +52,107 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    if message.content.lower().strip() == "ncl":
-        await message.channel.send(
-            "🤨 Bro typed `ncl` and dipped...\n"
-            "Try `nclhelp` before embarrassing yourself 😭"
-        )
+    uid = message.author.id
+    # XP gain
+    user_xp[uid] = user_xp.get(uid, 0) + random.randint(5,10)
+    if user_xp[uid] >= (user_levels.get(uid,0)+1) * 100:
+        user_levels[uid] = user_levels.get(uid,0) + 1
+        await message.channel.send(f"🔥 {message.author.mention} leveled up to **Level {user_levels[uid]}**!")
+
+    # AFK removal
+    if uid in user_afk:
+        user_afk.pop(uid)
+        await message.channel.send(f"👋 Welcome back {message.author.mention}")
+
+    # AFK mentions
+    for m in message.mentions:
+        if m.id in user_afk:
+            await message.channel.send(f"😴 {m.display_name} is AFK — {user_afk[m.id]}")
+
+    # Funny correction
+    if message.content.lower().strip() in ["ncl","ncl help","nclhelp"]:
+        await message.channel.send(random.choice([
+            "🤡 Almost… try **nclhelp**",
+            "😭 That ain’t it chief → **nclhelp**",
+            "Skill issue detected. Use **nclhelp**"
+        ]))
 
     await bot.process_commands(message)
 
-# ================= HELP (UPDATED ONLY) =================
+# ================= HELP =================
 @bot.command()
 async def help(ctx):
-    await ctx.send(
-        "**NCL BOT COMMAND GUIDE**\n"
-        "Here’s a guide to all the awesome commands you can use!\n"
-        "**Prefix:** `ncl`\n\n"
-
-        "🎉 **Fun & Social Commands**\n"
-        "`nclslap @user` — Slap someone 👋\n"
-        "`nclkiss @user` — Send a smooch 💋\n"
-        "`nclhug @user` — Hug your friends 🤗\n"
-        "`nclpat @user` — Pat someone ✨\n"
-        "`nclship @user1 @user2` — Ship two people ❤️\n"
-        "`nclmembers` — Check total members 👥\n"
-        "`ncljoke [@user]` — Get a random joke or roast 😎\n"
-        "`nclbeg` — Beg for fun 🍀\n"
-        "`nclroast @user` — Roast someone 🔥\n"
-        "`nclrate @user` — Rate a user ⭐\n"
-        "`ncl8ball <question>` — Ask the magic 8-ball 🎱\n"
-        "`nclafk <reason>` — Set AFK status 😴\n\n"
-
-        "📩 **Invites & Profile**\n"
-        "`nclprofile [@user]` — View profile 📊\n"
-        "`nclinvites [@user]` — Check invites 📩\n"
-        "`nclinviteboard` — Invite leaderboard 🏆\n"
-        "`ncldaily` — Daily reward 💸\n\n"
-
-        "🎁 **Events**\n"
-        "`nclgiveaway <minutes>` — Start giveaway 🎁\n"
-        "`nclconfess <message>` — Anonymous confession 😶‍🌫️\n\n"
-
-        "🛡️ **Staff & Moderator Commands**\n"
-        "`nclclear <amount>` — Clear messages 🧹\n"
-        "`nclpurge @user <amount>` — Purge user messages 🗑️\n"
-        "`nclwarn @user <reason>` — Warn a user ⚠️\n"
-        "`nclwarnings @user` — View warnings 📝\n"
-        "`nclunwarn @user` — Clear warnings ✅\n"
-        "`ncltimeout @user <minutes>` — Timeout ⏳\n"
-        "`ncluntimeout @user` — Remove timeout ⏱️\n"
-        "`nclmute @user` — Mute user 🔇\n"
-        "`nclunmute @user` — Unmute user 🔊\n"
-        "`nclslowmode <seconds>` — Set slowmode 🐢\n"
-        "`ncllock` — Lock channel 🔒\n"
-        "`nclunlock` — Unlock channel 🔓\n"
-        "`nclkick @user` — Kick member 👢\n"
-        "`nclban @user <reason>` — Ban member 🔨\n"
-        "`nclunban <user_id>` — Unban member 🎉\n\n"
-
-        "👑 **Founder / Co-Owner**\n"
-        "Has access to all commands, basically the boss 💎\n\n"
-        "_Tip: Use commands wisely… or hilariously 😏_"
+    embed = discord.Embed(
+        title="📘 NCL BOT COMMAND GUIDE",
+        description="Here’s a guide to all the awesome commands you can use!\n**Prefix:** `ncl`",
+        color=discord.Color.purple()
     )
+
+    embed.add_field(
+        name="🎉 Fun & Social Commands",
+        value="""
+`nclslap @user` — Slap someone 👋  
+`nclkiss @user` — Send a smooch 💋  
+`nclhug @user` — Hug your friends 🤗  
+`nclpat @user` — Pat someone ✨  
+`nclship @user1 @user2` — Ship two people ❤️  
+`nclmembers` — Check total members 👥  
+`ncljoke [@user]` — Get a random joke or roast 😎  
+`nclbeg` — Beg for fun 🍀  
+`nclroast @user` — Roast someone 🔥  
+`nclrate @user` — Rate a user ⭐  
+`ncl8ball <question>` — Ask the magic 8-ball 🎱  
+`nclafk <reason>` — Set AFK status 😴
+""", inline=False
+    )
+
+    embed.add_field(
+        name="📩 Invites & Profile",
+        value="""
+`nclprofile [@user]` — View profile 📊  
+`nclinvites [@user]` — Check invites 📩  
+`nclinviteboard` — Invite leaderboard 🏆  
+`ncldaily` — Daily reward 💸  
+`nclbalance` — Check coins 💰
+""", inline=False
+    )
+
+    embed.add_field(
+        name="🎁 Events",
+        value="""
+`nclgiveaway <minutes>` — Start giveaway 🎁  
+`nclconfess <message>` — Anonymous confession 😶‍🌫️
+""", inline=False
+    )
+
+    embed.add_field(
+        name="🛡️ Staff & Moderator Commands",
+        value="""
+`nclclear <amount>` — Clear messages 🧹  
+`nclpurge @user <amount>` — Purge user messages 🗑️  
+`nclwarn @user <reason>` — Warn a user ⚠️  
+`nclwarnings @user` — View warnings 📝  
+`nclunwarn @user` — Clear warnings ✅  
+`ncltimeout @user <minutes>` — Timeout ⏳  
+`ncluntimeout @user` — Remove timeout ⏱️  
+`nclmute @user` — Mute user 🔇  
+`nclunmute @user` — Unmute user 🔊  
+`nclslowmode <seconds>` — Set slowmode 🐢  
+`ncllock` — Lock channel 🔒  
+`nclunlock` — Unlock channel 🔓  
+`nclkick @user` — Kick member 👢  
+`nclban @user <reason>` — Ban member 🔨  
+`nclunban <user_id>` — Unban member 🎉
+""", inline=False
+    )
+
+    embed.add_field(
+        name="👑 Founder / Co-Owner",
+        value="Has access to all commands, basically the boss 💎", inline=False
+    )
+
+    embed.set_footer(text="Tip: Use commands wisely… or hilariously 😏")
+    await ctx.send(embed=embed)
 
 # ================= FUN COMMANDS =================
 @bot.command()
@@ -136,10 +181,12 @@ async def members(ctx):
 
 @bot.command()
 async def beg(ctx):
+    coins = random.randint(0,5)
+    user_coins[ctx.author.id] = user_coins.get(ctx.author.id,0)+coins
     await ctx.send(random.choice([
-        "You begged… and got nothing 💀",
-        "Begging detected. Dignity lost 😭",
-        "The bot felt bad… but still said no 😈"
+        f"💰 You begged and got {coins} coins",
+        "💀 You begged… and got nothing" if coins==0 else "",
+        "😭 The bot laughed at your begging" if coins>0 else ""
     ]))
 
 @bot.command()
@@ -159,74 +206,21 @@ async def joke(ctx, member: discord.Member = None):
         ]
     await ctx.send(random.choice(jokes))
 
-# ================= WARN SYSTEM =================
+# ================= PROFILE / COINS =================
 @bot.command()
-async def warn(ctx, member: discord.Member, *, reason="No reason"):
-    if get_power(ctx.author) < 40:
-        return await ctx.send("❌ You cannot warn members.")
-    if get_power(ctx.author) <= get_power(member):
-        return await ctx.send("🚫 You cannot warn equal or higher role.")
-    user_warnings.setdefault(member.id, []).append(reason)
-    await ctx.send(f"⚠️ {member.mention} warned.\nReason: **{reason}**")
+async def profile(ctx, member: discord.Member=None):
+    member = member or ctx.author
+    await ctx.send(
+        f"👤 **{member}**\n"
+        f"📊 Level: {user_levels.get(member.id,0)}\n"
+        f"✨ XP: {user_xp.get(member.id,0)}\n"
+        f"💰 Coins: {user_coins.get(member.id,0)}"
+    )
 
 @bot.command()
-async def warnings(ctx, member: discord.Member):
-    ws = user_warnings.get(member.id, [])
-    if not ws:
-        return await ctx.send(f"✅ {member.mention} has no warnings.")
-    text = "\n".join(f"{i+1}. {w}" for i, w in enumerate(ws))
-    await ctx.send(f"⚠️ **Warnings for {member}:**\n{text}")
-
-@bot.command()
-async def unwarn(ctx, member: discord.Member):
-    if get_power(ctx.author) < 80:
-        return await ctx.send("❌ Only Head Mod+ can clear warnings.")
-    user_warnings.pop(member.id, None)
-    await ctx.send(f"✅ Warnings cleared for {member.mention}")
-
-# ================= MODERATION =================
-@bot.command()
-async def clear(ctx, amount: int):
-    if get_power(ctx.author) < 40:
-        return await ctx.send("❌ No permission.")
-    await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"🧹 Cleared {amount} messages", delete_after=5)
-
-@bot.command()
-async def kick(ctx, member: discord.Member, *, reason="No reason"):
-    if get_power(ctx.author) <= get_power(member):
-        return await ctx.send("🚫 Cannot kick higher/equal role.")
-    await member.kick(reason=reason)
-    await ctx.send(f"👢 {member} kicked | {reason}")
-
-@bot.command()
-async def ban(ctx, member: discord.Member, *, reason="No reason"):
-    if get_power(ctx.author) <= get_power(member):
-        return await ctx.send("🚫 Cannot ban higher/equal role.")
-    await member.ban(reason=reason)
-    await ctx.send(f"🔨 {member} banned | {reason}")
-
-@bot.command()
-async def unban(ctx, user_id: int):
-    if get_power(ctx.author) < 80:
-        return await ctx.send("❌ No permission.")
-    user = await bot.fetch_user(user_id)
-    await ctx.guild.unban(user)
-    await ctx.send(f"✅ Unbanned {user}")
-
-@bot.command()
-async def timeout(ctx, member: discord.Member, minutes: int):
-    if get_power(ctx.author) <= get_power(member):
-        return await ctx.send("🚫 Cannot timeout higher/equal role.")
-    await member.timeout(timedelta(minutes=minutes))
-    await ctx.send(f"⏳ {member} timed out for {minutes} minutes")
-
-@bot.command()
-async def untimeout(ctx, member: discord.Member):
-    if get_power(ctx.author) < 40:
-        return await ctx.send("❌ No permission.")
-    await member.timeout(None)
-    await ctx.send(f"✅ Timeout removed for {member}")
+async def balance(ctx, member: discord.Member=None):
+    member = member or ctx.author
+    await ctx.send(f"💰 {member.mention} has {user_coins.get(member.id,0)} coins")
 
 # ================= RUN =================
 bot.run(TOKEN)

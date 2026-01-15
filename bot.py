@@ -36,7 +36,6 @@ def can_punish(ctx, target):
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def execute(query, params=(), fetch=False):
-    """Execute a query safely with a new connection each time."""
     with psycopg2.connect(DATABASE_URL) as conn:
         with conn.cursor() as cur:
             cur.execute(query, params)
@@ -103,13 +102,13 @@ async def on_member_join(member):
 # ================= ECONOMY =================
 daily_cooldowns = {}
 
-@bot.command()
+@bot.command(name="nclbalance")
 async def balance(ctx):
     get_user(ctx.author.id)
     coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
     await ctx.send(f"💰 You have **{coins} coins**")
 
-@bot.command()
+@bot.command(name="ncldaily")
 async def daily(ctx):
     uid = ctx.author.id
     now = datetime.utcnow()
@@ -124,7 +123,7 @@ async def daily(ctx):
     daily_cooldowns[uid] = now
     await ctx.send("💸 You got **50 daily coins**")
 
-@bot.command()
+@bot.command(name="nclgamble")
 async def gamble(ctx, amount: int):
     get_user(ctx.author.id)
     coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
@@ -144,7 +143,7 @@ async def gamble(ctx, amount: int):
 # ================= SHOP =================
 SHOP = {"vip": 500, "rename": 200, "rolecolor": 300}
 
-@bot.command()
+@bot.command(name="nclshop")
 async def shop(ctx):
     embed = discord.Embed(title="🛒 NCL SHOP", description="Spend your hard-earned coins wisely 💸", color=discord.Color.purple())
     embed.add_field(name="🎖️ VIP — 500 coins", value="• VIP role\n• Flex status\n• Future perks", inline=False)
@@ -153,7 +152,7 @@ async def shop(ctx):
     embed.set_footer(text="Use: nclbuy <item>")
     await ctx.send(embed=embed)
 
-@bot.command()
+@bot.command(name="nclbuy")
 async def buy(ctx, item: str):
     if item not in SHOP:
         return await ctx.send("❌ Item not found")
@@ -170,7 +169,7 @@ async def buy(ctx, item: str):
     await ctx.send(f"✅ You bought **{item.upper()}**")
 
 # ================= WARN SYSTEM =================
-@bot.command()
+@bot.command(name="nclwarn")
 async def warn(ctx, member: discord.Member, *, reason="No reason"):
     if not can_punish(ctx, member):
         return await ctx.send("🚫 Cannot warn higher role")
@@ -183,12 +182,12 @@ async def warn(ctx, member: discord.Member, *, reason="No reason"):
     else:
         await ctx.send(f"⚠️ Warning added ({count}/5)")
 
-@bot.command()
+@bot.command(name="nclwarnings")
 async def warnings(ctx, member: discord.Member):
     count = execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,), fetch=True)[0][0]
     await ctx.send(f"📝 Warnings: **{count}**")
 
-@bot.command()
+@bot.command(name="nclunwarn")
 async def unwarn(ctx, member: discord.Member):
     if get_power(ctx.author) < 80:
         return await ctx.send("❌ Head Mod+ only")
@@ -196,21 +195,21 @@ async def unwarn(ctx, member: discord.Member):
     await ctx.send("✅ Warnings cleared")
 
 # ================= MODERATION =================
-@bot.command()
+@bot.command(name="nclkick")
 async def kick(ctx, member: discord.Member):
     if not can_punish(ctx, member):
         return await ctx.send("🚫 Cannot kick higher role")
     await member.kick()
     await ctx.send("👢 User kicked")
 
-@bot.command()
+@bot.command(name="nclban")
 async def ban(ctx, member: discord.Member):
     if not can_punish(ctx, member):
         return await ctx.send("🚫 Cannot ban higher role")
     await member.ban()
     await ctx.send("🔨 User banned")
 
-@bot.command()
+@bot.command(name="nclunban")
 async def unban(ctx, user_id: int):
     if get_power(ctx.author) < 80:
         return await ctx.send("❌ Head Mod+ only")
@@ -230,7 +229,7 @@ MISSIONS = [
 
 user_missions = {}
 
-@bot.command()
+@bot.command(name="nclmission")
 async def mission(ctx):
     uid = ctx.author.id
     if uid not in user_missions:
@@ -240,10 +239,8 @@ async def mission(ctx):
     await ctx.send(f"📝 Your mission: **{task}**")
 
 def complete_mission(uid, action_name):
-    """Matches mission keywords with command actions"""
     if uid in user_missions:
         mission = MISSIONS[user_missions[uid]["task"]]
-        # match by keyword: check if action_name in mission task (lowercase)
         if any(word in mission["task"].lower() for word in action_name.lower().split()):
             user_missions[uid]["completed"] += 1
             if user_missions[uid]["completed"] >= 1:
@@ -254,29 +251,29 @@ def complete_mission(uid, action_name):
                 return coins
     return 0
 
-# Fun commands triggering missions
-@bot.command()
+# ================= FUN COMMANDS =================
+@bot.command(name="nclhug")
 async def hug(ctx, member: discord.Member):
     await ctx.send(f"🤗 {ctx.author.mention} hugged {member.mention}")
     coins_earned = complete_mission(ctx.author.id, "hug")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
-@bot.command()
+@bot.command(name="nclkiss")
 async def kiss(ctx, member: discord.Member):
     await ctx.send(f"💋 {ctx.author.mention} kissed {member.mention}")
     coins_earned = complete_mission(ctx.author.id, "kiss")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
-@bot.command()
+@bot.command(name="nclpat")
 async def pat(ctx, member: discord.Member):
     await ctx.send(f"✨ {ctx.author.mention} patted {member.mention}")
     coins_earned = complete_mission(ctx.author.id, "pat")
     if coins_earned:
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
-@bot.command()
+@bot.command(name="nclship")
 async def ship(ctx, u1: discord.Member, u2: discord.Member):
     await ctx.send(f"❤️ {u1.name} x {u2.name} = {random.randint(1,100)}%")
     coins_earned = complete_mission(ctx.author.id, "ship")
@@ -284,7 +281,7 @@ async def ship(ctx, u1: discord.Member, u2: discord.Member):
         await ctx.send(f"🎉 Mission completed! You earned **{coins_earned} coins**")
 
 # ================= MINI-GAMES =================
-@bot.command()
+@bot.command(name="nclslots")
 async def nclslots(ctx, bet: int):
     get_user(ctx.author.id)
     coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)[0][0]
@@ -305,7 +302,7 @@ async def nclslots(ctx, bet: int):
     execute("UPDATE users SET coins = coins + %s WHERE user_id=%s", (winnings, ctx.author.id))
     await ctx.send(msg)
 
-@bot.command()
+@bot.command(name="nclroll")
 async def nclroll(ctx, guess: int):
     if guess<1 or guess>6: return await ctx.send("🎲 Guess 1-6")
     roll = random.randint(1,6)
@@ -316,7 +313,7 @@ async def nclroll(ctx, guess: int):
     else:
         await ctx.send(f"🎲 You guessed {guess} but rolled {roll}. Better luck next time!")
 
-@bot.command()
+@bot.command(name="nclrps")
 async def nclrps(ctx, member: discord.Member, choice: str):
     choices = ["rock","paper","scissors"]
     user_choice = choice.lower()
@@ -331,8 +328,8 @@ async def nclrps(ctx, member: discord.Member, choice: str):
         result=f"You lose! {bot_choice} beats {user_choice}"
     await ctx.send(f"{ctx.author.mention} chose {user_choice}\n{member.mention} chose {bot_choice}\n{result}")
 
-# ================= PROFILES =================
-@bot.command()
+# ================= PROFILE =================
+@bot.command(name="nclsetbio")
 async def nclsetbio(ctx, *, bio: str):
     get_user(ctx.author.id)
     execute("""
@@ -341,7 +338,7 @@ async def nclsetbio(ctx, *, bio: str):
     """, (ctx.author.id, bio, bio))
     await ctx.send("✅ Bio updated!")
 
-@bot.command()
+@bot.command(name="nclprofile")
 async def nclprofile(ctx, member: discord.Member=None):
     if not member: member=ctx.author
     data = execute("SELECT nickname, emoji, bio, color FROM profiles WHERE user_id=%s",(member.id,),fetch=True)
@@ -357,7 +354,7 @@ async def nclprofile(ctx, member: discord.Member=None):
     await ctx.send(embed=embed)
 
 # ================= HELP =================
-@bot.command()
+@bot.command(name="nclhelp")
 async def help(ctx):
     embed = discord.Embed(
         title="📜 NCL Bot Commands",

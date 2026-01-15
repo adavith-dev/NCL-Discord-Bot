@@ -35,7 +35,7 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # ================= STORAGE =================
-user_warnings = {}  # FIXED (no name conflict)
+user_warnings = {}
 
 # ================= EVENTS =================
 @bot.event
@@ -55,54 +55,59 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ================= HELP =================
+# ================= HELP (UPDATED ONLY) =================
 @bot.command()
 async def help(ctx):
-    embed = discord.Embed(
-        title="📘 NCL BOT COMMAND GUIDE",
-        description="Here’s a guide to all the awesome commands you can use!\n**Prefix:** `ncl`",
-        color=discord.Color.purple()
-    )
+    await ctx.send(
+        "**NCL BOT COMMAND GUIDE**\n"
+        "Here’s a guide to all the awesome commands you can use!\n"
+        "**Prefix:** `ncl`\n\n"
 
-    embed.add_field(
-        name="🎉 Fun & Social Commands",
-        value="""
-`nclslap @user` — Slap someone 👋  
-`nclkiss @user` — Send a smooch 💋  
-`nclhug @user` — Hug your friends 🤗  
-`nclpat @user` — Pat someone ✨  
-`nclship @user1 @user2` — Ship two people ❤️  
-`nclmembers` — Check total members 👥  
-`ncljoke [@user]` — Get a random joke or roast 😎  
-`nclbeg` — Beg for fun (luck might strike!) 🍀
-""",
-        inline=False
-    )
+        "🎉 **Fun & Social Commands**\n"
+        "`nclslap @user` — Slap someone 👋\n"
+        "`nclkiss @user` — Send a smooch 💋\n"
+        "`nclhug @user` — Hug your friends 🤗\n"
+        "`nclpat @user` — Pat someone ✨\n"
+        "`nclship @user1 @user2` — Ship two people ❤️\n"
+        "`nclmembers` — Check total members 👥\n"
+        "`ncljoke [@user]` — Get a random joke or roast 😎\n"
+        "`nclbeg` — Beg for fun 🍀\n"
+        "`nclroast @user` — Roast someone 🔥\n"
+        "`nclrate @user` — Rate a user ⭐\n"
+        "`ncl8ball <question>` — Ask the magic 8-ball 🎱\n"
+        "`nclafk <reason>` — Set AFK status 😴\n\n"
 
-    embed.add_field(
-        name="🛡️ Staff & Moderator Commands",
-        value="""
-`nclclear <amount>` — Clears messages 🧹  
-`nclwarn @user <reason>` — Warn a user ⚠️  
-`nclwarnings @user` — See all warnings 📝  
-`nclunwarn @user` — Remove all warnings ✅  
-`ncltimeout @user <minutes>` — Timeout a user ⏳  
-`ncluntimeout @user` — Remove timeout ⏱️  
-`nclkick @user` — Kick a member 👢  
-`nclban @user <reason>` — Ban a member 🔨  
-`nclunban <user_id>` — Unban someone 🎉
-""",
-        inline=False
-    )
+        "📩 **Invites & Profile**\n"
+        "`nclprofile [@user]` — View profile 📊\n"
+        "`nclinvites [@user]` — Check invites 📩\n"
+        "`nclinviteboard` — Invite leaderboard 🏆\n"
+        "`ncldaily` — Daily reward 💸\n\n"
 
-    embed.add_field(
-        name="👑 Founder / Co-Owner",
-        value="Has access to **all commands**, basically the boss 💎",
-        inline=False
-    )
+        "🎁 **Events**\n"
+        "`nclgiveaway <minutes>` — Start giveaway 🎁\n"
+        "`nclconfess <message>` — Anonymous confession 😶‍🌫️\n\n"
 
-    embed.set_footer(text="💡 Tip: Use commands wisely… or hilariously! 😏")
-    await ctx.send(embed=embed)
+        "🛡️ **Staff & Moderator Commands**\n"
+        "`nclclear <amount>` — Clear messages 🧹\n"
+        "`nclpurge @user <amount>` — Purge user messages 🗑️\n"
+        "`nclwarn @user <reason>` — Warn a user ⚠️\n"
+        "`nclwarnings @user` — View warnings 📝\n"
+        "`nclunwarn @user` — Clear warnings ✅\n"
+        "`ncltimeout @user <minutes>` — Timeout ⏳\n"
+        "`ncluntimeout @user` — Remove timeout ⏱️\n"
+        "`nclmute @user` — Mute user 🔇\n"
+        "`nclunmute @user` — Unmute user 🔊\n"
+        "`nclslowmode <seconds>` — Set slowmode 🐢\n"
+        "`ncllock` — Lock channel 🔒\n"
+        "`nclunlock` — Unlock channel 🔓\n"
+        "`nclkick @user` — Kick member 👢\n"
+        "`nclban @user <reason>` — Ban member 🔨\n"
+        "`nclunban <user_id>` — Unban member 🎉\n\n"
+
+        "👑 **Founder / Co-Owner**\n"
+        "Has access to all commands, basically the boss 💎\n\n"
+        "_Tip: Use commands wisely… or hilariously 😏_"
+    )
 
 # ================= FUN COMMANDS =================
 @bot.command()
@@ -159,10 +164,8 @@ async def joke(ctx, member: discord.Member = None):
 async def warn(ctx, member: discord.Member, *, reason="No reason"):
     if get_power(ctx.author) < 40:
         return await ctx.send("❌ You cannot warn members.")
-
     if get_power(ctx.author) <= get_power(member):
         return await ctx.send("🚫 You cannot warn equal or higher role.")
-
     user_warnings.setdefault(member.id, []).append(reason)
     await ctx.send(f"⚠️ {member.mention} warned.\nReason: **{reason}**")
 

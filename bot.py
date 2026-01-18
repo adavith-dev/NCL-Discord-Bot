@@ -2,10 +2,11 @@ import discord
 from discord.ext import commands
 from discord.utils import get
 import asyncio
+import os  # added to fetch TOKEN from Railway environment
 
 # ================= BASIC SETUP =================
 intents = discord.Intents.all()
-TOKEN = TOKEN
+TOKEN = os.environ["TOKEN"]  # fetch the token from Railway env variables
 bot = commands.Bot(
     command_prefix="ncl",
     intents=intents,
@@ -125,5 +126,3 @@ async def on_command_error(ctx, error):
 
 # ================= START BOT =================
 bot.run(TOKEN)
-
-

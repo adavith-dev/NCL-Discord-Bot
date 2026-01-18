@@ -1,14 +1,20 @@
 import discord
-from discord.ext import commands
-import os, random, re
-from datetime import datetime, timedelta
+from discord.ext import commands, tasks
+import os, random, asyncio
 import psycopg2
+from datetime import datetime, timedelta
+import openai
 
-# ================= BOT SETUP =================
+# ================= CONFIG =================
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="ncl", intents=intents, help_command=None)
 
-# ================= ROLE IDS =================
+TOKEN = os.environ.get("TOKEN")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
+
+# ================= ROLES & POWER =================
 FOUNDER_ID   = 1457168593123803222
 COOWNER_ID   = 1457168593123803221
 HEAD_MOD_ID  = 1458041286006276267
@@ -25,219 +31,135 @@ ROLE_POWER = {
     TRIAL_MOD_ID: 40
 }
 
-def get_power(member):
-    return max((ROLE_POWER.get(r.id, 0) for r in member.roles), default=0)
-
-def can_punish(ctx, target):
-    return get_power(ctx.author) > get_power(target)
+BOOST_CHANNEL_ID = 1460708408343658672
+INVITE_CHANNEL_ID = 1457800213250179104
+GUILD_ID = 1457168592763355148
 
 # ================= DATABASE =================
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL not set")
-
-def execute(query, params=(), fetch=False):
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                if fetch:
-                    return cur.fetchall()
-                conn.commit()
-    except Exception as e:
-        print(f"DB ERROR: {e}")
-        return None
-
-# ================= TABLES =================
-execute("""
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
+cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id BIGINT PRIMARY KEY,
-    coins INTEGER DEFAULT 0,
-    invites INTEGER DEFAULT 0
+    coins INT DEFAULT 0,
+    xp INT DEFAULT 0,
+    level INT DEFAULT 1,
+    last_daily TIMESTAMP
 )
 """)
-
-execute("""
-CREATE TABLE IF NOT EXISTS warnings (
-    user_id BIGINT,
-    reason TEXT
-)
-""")
-
-execute("""
-CREATE TABLE IF NOT EXISTS profiles (
-    user_id BIGINT PRIMARY KEY,
-    nickname TEXT,
-    emoji TEXT,
-    bio TEXT,
-    color TEXT
-)
-""")
-
-def get_user(uid):
-    execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (uid,))
-
-# ================= READY =================
-invites_cache = {}
-
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    for g in bot.guilds:
-        try:
-            invites_cache[g.id] = await g.invites()
-        except:
-            invites_cache[g.id] = []
-
-# ================= INVITES =================
-@bot.event
-async def on_member_join(member):
-    before = invites_cache.get(member.guild.id, [])
-    try:
-        after = await member.guild.invites()
-    except:
-        after = []
-
-    for i in after:
-        for b in before:
-            if i.code == b.code and i.uses > b.uses:
-                get_user(i.inviter.id)
-                execute(
-                    "UPDATE users SET invites = invites + 1, coins = coins + 25 WHERE user_id=%s",
-                    (i.inviter.id,)
-                )
-                break
-    invites_cache[member.guild.id] = after
-
-# ================= ECONOMY =================
-daily_cooldowns = {}
-
-@bot.command(aliases=["bal"])
-async def nclbalance(ctx):
-    get_user(ctx.author.id)
-    coins = execute("SELECT coins FROM users WHERE user_id=%s", (ctx.author.id,), fetch=True)
-    coins = coins[0][0] if coins else 0
-    await ctx.send(f"💰 You have **{coins} coins**")
-
-@bot.command(aliases=["daily"])
-async def ncldaily(ctx):
-    uid = ctx.author.id
-    now = datetime.utcnow()
-    if uid in daily_cooldowns and now - daily_cooldowns[uid] < timedelta(hours=24):
-        remaining = timedelta(hours=24) - (now - daily_cooldowns[uid])
-        h, r = divmod(int(remaining.total_seconds()), 3600)
-        m, s = divmod(r, 60)
-        return await ctx.send(f"⏳ Wait {h}h {m}m {s}s")
-
-    get_user(uid)
-    execute("UPDATE users SET coins = coins + 50 WHERE user_id=%s", (uid,))
-    daily_cooldowns[uid] = now
-    await ctx.send("💸 You got **50 daily coins**")
+conn.commit()
 
 # ================= HELP COMMAND =================
-@bot.command(name="help", aliases=["nclhelp"])
-async def help_command(ctx):
+@bot.command()
+async def help(ctx):
     embed = discord.Embed(
-        title="📘 NCL MOD BOT HELP",
-        color=discord.Color.blue()
+        title="NCL Bot Commands",
+        description="Fun + Admin + Economy + Leveling System",
+        color=discord.Color.purple()
     )
-
-    embed.add_field(
-        name="🛠 Admin Commands",
-        value=(
-            "`nclban @user reason`\n"
-            "`nclunban user_id`\n"
-            "`nclmute @user`\n"
-            "`nclunmute @user`\n"
-            "`nclwarn @user reason`\n"
-            "`nclunwarn @user`\n"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚙ Utility",
-        value="`nclping` - bot latency",
-        inline=False
-    )
-
-    embed.set_footer(text="NCL MOD BOT • clean & stable")
+    embed.add_field(name="🎉 Fun Commands",
+                    value="`ncljoke @user` - AI joke on user\n`nclslap @user`\n`nclkiss @user`\n`nclhug @user`\n`nclbeg` - earn coins",
+                    inline=False)
+    embed.add_field(name="💰 Economy",
+                    value="`ncshop` - view shop\n`ncldaily` - claim daily coins",
+                    inline=False)
+    embed.add_field(name="⚡ Admin Commands",
+                    value="`nclclear <num>` - clear messages\n`nclgiverole @user <role>` - give role",
+                    inline=False)
+    embed.set_footer(text="Powered by AI & NCL Staff")
     await ctx.send(embed=embed)
 
-# ================= WARN =================
-@bot.command(aliases=["warn"])
-async def nclwarn(ctx, member: discord.Member, *, reason="No reason"):
-    if not can_punish(ctx, member):
-        return await ctx.send("🚫 Cannot warn higher role")
-    get_user(member.id)
-    execute("INSERT INTO warnings VALUES (%s,%s)", (member.id, reason))
-    count = execute("SELECT COUNT(*) FROM warnings WHERE user_id=%s", (member.id,), fetch=True)
-    count = count[0][0] if count else 0
+# ================= AUTO ROLE =================
+@bot.event
+async def on_member_join(member):
+    guild = bot.get_guild(GUILD_ID)
+    role = discord.utils.get(guild.roles, id=VIP_ROLE_ID)
+    if role:
+        await member.add_roles(role)
+    await member.send(f"Welcome {member.name}! You got the VIP role!")
 
-    if count >= 5:
-        try:
-            await member.ban(reason="Auto-ban: 5 warnings")
-        except:
-            pass
-        await ctx.send("🔨 AUTO-BANNED (5 WARNINGS)")
+# ================= LEVELING =================
+async def update_xp(user_id, amount=1):
+    cur.execute("SELECT xp, level FROM users WHERE user_id=%s", (user_id,))
+    result = cur.fetchone()
+    if result:
+        xp, level = result
+        xp += amount
+        new_level = level
+        if xp >= level*10:  # simple leveling
+            xp = xp - level*10
+            new_level += 1
+        cur.execute("UPDATE users SET xp=%s, level=%s WHERE user_id=%s", (xp, new_level, user_id))
     else:
-        await ctx.send(f"⚠️ Warning added ({count}/5)")
+        cur.execute("INSERT INTO users (user_id, xp) VALUES (%s, %s)", (user_id, amount))
+    conn.commit()
 
-@bot.command(aliases=["unwarn"])
-async def nclunwarn(ctx, member: discord.Member):
-    if get_power(ctx.author) < 80:
-        return await ctx.send("❌ Head Mod+ only")
-    execute("DELETE FROM warnings WHERE user_id=%s", (member.id,))
-    await ctx.send("✅ Warnings cleared")
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    await update_xp(message.author.id)
+    await bot.process_commands(message)
 
-# ================= MODERATION =================
-@bot.command(aliases=["kick"])
-async def nclkick(ctx, member: discord.Member):
-    if not can_punish(ctx, member):
-        return await ctx.send("🚫 Cannot kick higher role")
+# ================= DAILY COINS =================
+@bot.command()
+async def daily(ctx):
+    cur.execute("SELECT coins, last_daily FROM users WHERE user_id=%s", (ctx.author.id,))
+    result = cur.fetchone()
+    now = datetime.utcnow()
+    if result:
+        coins, last_daily = result
+        if last_daily and now - last_daily < timedelta(hours=24):
+            await ctx.send(f"{ctx.author.mention}, you already claimed your daily coins!")
+            return
+        coins += 100
+        cur.execute("UPDATE users SET coins=%s, last_daily=%s WHERE user_id=%s", (coins, now, ctx.author.id))
+    else:
+        cur.execute("INSERT INTO users (user_id, coins, last_daily) VALUES (%s, %s, %s)", (ctx.author.id, 100, now))
+    conn.commit()
+    await ctx.send(f"{ctx.author.mention} claimed 100 coins! 💰")
+
+# ================= JOKE COMMAND =================
+@bot.command()
+async def ncljoke(ctx, user: discord.Member):
     try:
-        await member.kick()
-    except:
-        pass
-    await ctx.send("👢 User kicked")
-
-@bot.command(aliases=["ban"])
-async def nclban(ctx, member: discord.Member):
-    if not can_punish(ctx, member):
-        return await ctx.send("🚫 Cannot ban higher role")
-    try:
-        await member.ban()
-    except:
-        pass
-    await ctx.send("🔨 User banned")
-
-@bot.command(aliases=["unban"])
-async def nclunban(ctx, user: str):
-    if get_power(ctx.author) < 80:
-        return await ctx.send("❌ Head Mod+ only")
-
-    try:
-        user_id = int(re.sub(r"[<@!>]", "", user))
-        banned = await ctx.guild.bans()
-        for ban_entry in banned:
-            if ban_entry.user.id == user_id:
-                await ctx.guild.unban(ban_entry.user)
-                return await ctx.send("🎉 User unbanned")
-        await ctx.send("❌ User not banned")
+        prompt = f"Make a funny joke about {user.name}, family friendly."
+        response = openai.Completion.create(
+            model="text-davinci-003",
+            prompt=prompt,
+            max_tokens=60
+        )
+        joke = response.choices[0].text.strip()
+        await ctx.send(f"{ctx.author.mention} jokes about {user.mention}: {joke}")
     except Exception as e:
-        await ctx.send(f"❌ Failed to unban: {e}")
-# ================= AI FUN =================
-@bot.command(aliases=["joke", "ai", "think"])
-async def nclai(ctx, *, prompt="Tell me a joke"):
-    """
-    Generate AI content based on a prompt.
-    Default prompt is to tell a joke.
-    """
-    await ctx.send("🤖 Thinking...")
-    reply = await generate_response(prompt)
-    await ctx.send(f"💡 {reply}")
+        await ctx.send("Couldn't generate joke 😅")
 
+# ================= SLAP/KISS/HUG =================
+@bot.command()
+async def slap(ctx, user: discord.Member):
+    await ctx.send(f"{ctx.author.mention} slaps {user.mention}! 😳")
 
-# ================= RUN =================
-bot.run(os.getenv("TOKEN"))
+@bot.command()
+async def kiss(ctx, user: discord.Member):
+    await ctx.send(f"{ctx.author.mention} kisses {user.mention}! 😘")
 
+@bot.command()
+async def hug(ctx, user: discord.Member):
+    await ctx.send(f"{ctx.author.mention} hugs {user.mention}! 🤗")
+
+# ================= CLEAR MESSAGES =================
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int):
+    await ctx.channel.purge(limit=amount+1)
+    await ctx.send(f"Cleared {amount} messages!", delete_after=5)
+
+# ================= GIVE ROLE =================
+@bot.command()
+@commands.has_permissions(manage_roles=True)
+async def giverole(ctx, user: discord.Member, role: discord.Role):
+    await user.add_roles(role)
+    await ctx.send(f"Gave {role.name} to {user.mention}")
+
+# ================= RUN BOT =================
+bot.run(TOKEN)

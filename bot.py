@@ -5,7 +5,7 @@ import asyncio
 
 # ================= BASIC SETUP =================
 intents = discord.Intents.all()
-
+TOKEN = TOKEN
 bot = commands.Bot(
     command_prefix="ncl",
     intents=intents,
@@ -124,5 +124,6 @@ async def on_command_error(ctx, error):
         print(error)
 
 # ================= START BOT =================
-bot.run("TOKEN")
+bot.run(TOKEN)
+
 

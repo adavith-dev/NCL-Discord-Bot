@@ -3,7 +3,6 @@ from discord.ext import commands, tasks
 import os, random, asyncio
 import psycopg2
 from datetime import datetime, timedelta
-import openai
 
 # ================= CONFIG =================
 intents = discord.Intents.all()
@@ -11,8 +10,6 @@ bot = commands.Bot(command_prefix="ncl", intents=intents, help_command=None)
 
 TOKEN = os.environ.get("TOKEN")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
 
 # ================= ROLES & POWER =================
 FOUNDER_ID   = 1457168593123803222
@@ -58,7 +55,7 @@ async def help(ctx):
         color=discord.Color.purple()
     )
     embed.add_field(name="🎉 Fun Commands",
-                    value="`ncljoke @user` - AI joke on user\n`nclslap @user`\n`nclkiss @user`\n`nclhug @user`\n`nclbeg` - earn coins",
+                    value="`ncljoke @user` - Joke on user\n`nclslap @user`\n`nclkiss @user`\n`nclhug @user`\n`nclbeg` - earn coins",
                     inline=False)
     embed.add_field(name="💰 Economy",
                     value="`ncshop` - view shop\n`ncldaily` - claim daily coins",
@@ -66,7 +63,7 @@ async def help(ctx):
     embed.add_field(name="⚡ Admin Commands",
                     value="`nclclear <num>` - clear messages\n`nclgiverole @user <role>` - give role",
                     inline=False)
-    embed.set_footer(text="Powered by AI & NCL Staff")
+    embed.set_footer(text="Powered by NCL Staff")
     await ctx.send(embed=embed)
 
 # ================= AUTO ROLE =================
@@ -122,17 +119,15 @@ async def daily(ctx):
 # ================= JOKE COMMAND =================
 @bot.command()
 async def ncljoke(ctx, user: discord.Member):
-    try:
-        prompt = f"Make a funny joke about {user.name}, family friendly."
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=prompt,
-            max_tokens=60
-        )
-        joke = response.choices[0].text.strip()
-        await ctx.send(f"{ctx.author.mention} jokes about {user.mention}: {joke}")
-    except Exception as e:
-        await ctx.send("Couldn't generate joke 😅")
+    jokes = [
+        f"{user.name} tried to eat a clock, it was very time-consuming!",
+        f"Why did {user.name} bring a ladder to school? Because they wanted to go to high school!",
+        f"{user.name} told a joke about construction, but I'm still working on it!",
+        f"Why did {user.name} go to the doctor? Because they felt a little funny!",
+        f"{user.name} tried to catch fog yesterday. Mist!"
+    ]
+    joke = random.choice(jokes)
+    await ctx.send(f"{ctx.author.mention} jokes about {user.mention}: {joke}")
 
 # ================= SLAP/KISS/HUG =================
 @bot.command()

@@ -226,6 +226,18 @@ async def nclunban(ctx, user: str):
         await ctx.send("❌ User not banned")
     except Exception as e:
         await ctx.send(f"❌ Failed to unban: {e}")
+# ================= AI FUN =================
+@bot.command(aliases=["joke", "ai", "think"])
+async def nclai(ctx, *, prompt="Tell me a joke"):
+    """
+    Generate AI content based on a prompt.
+    Default prompt is to tell a joke.
+    """
+    await ctx.send("🤖 Thinking...")
+    reply = await generate_response(prompt)
+    await ctx.send(f"💡 {reply}")
+
 
 # ================= RUN =================
 bot.run(os.getenv("TOKEN"))
+

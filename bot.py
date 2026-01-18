@@ -134,6 +134,36 @@ async def ncldaily(ctx):
     daily_cooldowns[uid] = now
     await ctx.send("💸 You got **50 daily coins**")
 
+# ================= HELP COMMAND =================
+@bot.command(name="help", aliases=["nclhelp"])
+async def help_command(ctx):
+    embed = discord.Embed(
+        title="📘 NCL MOD BOT HELP",
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(
+        name="🛠 Admin Commands",
+        value=(
+            "`nclban @user reason`\n"
+            "`nclunban user_id`\n"
+            "`nclmute @user`\n"
+            "`nclunmute @user`\n"
+            "`nclwarn @user reason`\n"
+            "`nclunwarn @user`\n"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚙ Utility",
+        value="`nclping` - bot latency",
+        inline=False
+    )
+
+    embed.set_footer(text="NCL MOD BOT • clean & stable")
+    await ctx.send(embed=embed)
+
 # ================= WARN =================
 @bot.command(aliases=["warn"])
 async def nclwarn(ctx, member: discord.Member, *, reason="No reason"):

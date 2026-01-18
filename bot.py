@@ -124,4 +124,5 @@ async def on_command_error(ctx, error):
         print(error)
 
 # ================= START BOT =================
-bot.run("YOUR_BOT_TOKEN_HERE")
+bot.run("TOKEN")
+

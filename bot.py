@@ -77,19 +77,23 @@ async def on_member_join(member):
 
 # ================= LEVELING =================
 async def update_xp(user_id, amount=1):
-    cur.execute("SELECT xp, level FROM users WHERE user_id=%s", (user_id,))
-    result = cur.fetchone()
-    if result:
-        xp, level = result
-        xp += amount
-        new_level = level
-        if xp >= level*10:  # simple leveling
-            xp = xp - level*10
-            new_level += 1
-        cur.execute("UPDATE users SET xp=%s, level=%s WHERE user_id=%s", (xp, new_level, user_id))
-    else:
-        cur.execute("INSERT INTO users (user_id, xp) VALUES (%s, %s)", (user_id, amount))
-    conn.commit()
+    try:
+        cur.execute("SELECT xp, level FROM users WHERE user_id=%s", (user_id,))
+        result = cur.fetchone()
+        if result:
+            xp, level = result
+            xp += amount
+            new_level = level
+            if xp >= level*10:  # simple leveling
+                xp = xp - level*10
+                new_level += 1
+            cur.execute("UPDATE users SET xp=%s, level=%s WHERE user_id=%s", (xp, new_level, user_id))
+        else:
+            cur.execute("INSERT INTO users (user_id, xp, level) VALUES (%s, %s, %s)", (user_id, amount, 1))
+        conn.commit()
+    except psycopg2.Error as e:
+        print(f"Database error in update_xp: {e}")
+        conn.rollback()  # rollback if there’s an error
 
 @bot.event
 async def on_message(message):
@@ -101,20 +105,25 @@ async def on_message(message):
 # ================= DAILY COINS =================
 @bot.command()
 async def daily(ctx):
-    cur.execute("SELECT coins, last_daily FROM users WHERE user_id=%s", (ctx.author.id,))
-    result = cur.fetchone()
-    now = datetime.utcnow()
-    if result:
-        coins, last_daily = result
-        if last_daily and now - last_daily < timedelta(hours=24):
-            await ctx.send(f"{ctx.author.mention}, you already claimed your daily coins!")
-            return
-        coins += 100
-        cur.execute("UPDATE users SET coins=%s, last_daily=%s WHERE user_id=%s", (coins, now, ctx.author.id))
-    else:
-        cur.execute("INSERT INTO users (user_id, coins, last_daily) VALUES (%s, %s, %s)", (ctx.author.id, 100, now))
-    conn.commit()
-    await ctx.send(f"{ctx.author.mention} claimed 100 coins! 💰")
+    try:
+        cur.execute("SELECT coins, last_daily FROM users WHERE user_id=%s", (ctx.author.id,))
+        result = cur.fetchone()
+        now = datetime.utcnow()
+        if result:
+            coins, last_daily = result
+            if last_daily and now - last_daily < timedelta(hours=24):
+                await ctx.send(f"{ctx.author.mention}, you already claimed your daily coins!")
+                return
+            coins += 100
+            cur.execute("UPDATE users SET coins=%s, last_daily=%s WHERE user_id=%s", (coins, now, ctx.author.id))
+        else:
+            cur.execute("INSERT INTO users (user_id, coins, last_daily) VALUES (%s, %s, %s)", (ctx.author.id, 100, now))
+        conn.commit()
+        await ctx.send(f"{ctx.author.mention} claimed 100 coins! 💰")
+    except psycopg2.Error as e:
+        print(f"Database error in daily command: {e}")
+        conn.rollback()
+        await ctx.send("Database error occurred. Please try again later.")
 
 # ================= JOKE COMMAND =================
 @bot.command()
